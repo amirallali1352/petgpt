@@ -28,6 +28,18 @@ def ensure_column(conn, table, column, definition):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
+def ensure_default_users(conn):
+    digest = hashlib.sha256(b"123456").hexdigest()
+    conn.executemany(
+        "INSERT OR IGNORE INTO users(name,email,role,password_hash) VALUES (?,?,?,?)",
+        [
+            ("مریم احمدی", "admin@petclinic.local", "admin", digest),
+            ("دکتر پارسا", "vet@petclinic.local", "vet", digest),
+            ("فروشنده پت‌شاپ", "shopkeeper@petclinic.local", "shop_seller", digest),
+        ],
+    )
+
+
 def init_db():
     with connect() as conn:
         conn.executescript(
@@ -209,18 +221,7 @@ def init_db():
                     ("joint-supplement", "مکمل مفاصل", "مکمل", "پودر", 18, "بسته", 6),
                 ],
             )
-        if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
-            digest = hashlib.sha256(b"123456").hexdigest()
-            conn.executemany(
-                "INSERT INTO users(name,email,role,password_hash) VALUES (?,?,?,?)",
-                [("مریم احمدی", "admin@petclinic.local", "admin", digest),
-                 ("دکتر پارسا", "vet@petclinic.local", "vet", digest)],
-            )
-        digest = hashlib.sha256(b"123456").hexdigest()
-        conn.execute(
-            "INSERT OR IGNORE INTO users(name,email,role,password_hash) VALUES (?,?,?,?)",
-            ("فروشنده پت‌شاپ", "shopkeeper@petclinic.local", "shop_seller", digest),
-        )
+        ensure_default_users(conn)
 
 
 def as_dict(row):
@@ -631,6 +632,8 @@ class Handler(BaseHTTPRequestHandler):
             email, password = str(payload.get("email", "")).lower().strip(), str(payload.get("password", ""))
             digest = hashlib.sha256(password.encode()).hexdigest()
             with connect() as conn:
+                # Repair databases created before the shop-seller account was introduced.
+                ensure_default_users(conn)
                 row = conn.execute("SELECT id,name,email,role FROM users WHERE lower(email)=? AND password_hash=?",
                                    (email, digest)).fetchone()
             if not row:

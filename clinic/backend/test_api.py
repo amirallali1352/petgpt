@@ -171,6 +171,21 @@ class PetClinicApiTests(unittest.TestCase):
         vet_token = self.login("vet@petclinic.local")
         self.assertNotEqual(admin_token, vet_token)
 
+    def test_existing_database_is_repaired_with_shop_seller_account(self) -> None:
+        with server.connect() as conn:
+            conn.execute("DELETE FROM users WHERE email = ?", ("shopkeeper@petclinic.local",))
+
+        status, body, _ = self.client.request(
+            "POST",
+            "/api/auth/login",
+            payload={
+                "email": "shopkeeper@petclinic.local",
+                "password": "123456",
+            },
+        )
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["user"]["role"], "shop_seller")
+
     def test_pet_shop_seller_can_authenticate(self) -> None:
         status, body, _ = self.client.request(
             "POST",
