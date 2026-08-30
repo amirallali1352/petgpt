@@ -1,0 +1,9 @@
+clinic/.chrome-test/
+clinic/.chrome-test-2/
+clinic/backend/__pycache__/
+clinic/backend/*.log
+clinic/petclinic_runtime.db
+clinic/petclinic.db
+*.pyc
+.env
+.venv/

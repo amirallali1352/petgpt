@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#102a43" />
+    <title>پت‌کلینیک | داشبورد مدیریت کلینیک</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="overrides.css" />
+  </head>
+  <body>
+    <section class="login-screen" id="loginScreen">
+      <div class="login-art">
+        <div class="login-orbit orbit-one"></div><div class="login-orbit orbit-two"></div>
+        <div class="login-paw">🐾</div>
+        <span class="login-floating float-one">♡</span><span class="login-floating float-two">✣</span><span class="login-floating float-three">✚</span>
+        <div class="login-art-copy"><strong>مراقبت بهتر،<br />با یک پرونده کامل</strong><p>پت‌کلینیک ارتباط امن و ساده بین شما، حیوان‌تان و تیم درمانی را فراهم می‌کند.</p></div>
+      </div>
+      <div class="login-panel">
+        <div class="login-brand"><div class="brand-mark">✚</div><div><strong>پت‌کلینیک</strong><span>مدیریت هوشمند کلینیک</span></div><button class="login-home-button" id="loginHomeButton" type="button">⌂ صفحه اصلی</button></div>
+        <div class="login-heading"><div class="eyebrow">ورود امن به سامانه</div><h1>خوش آمدید 👋</h1><p>برای ورود، نقش و حساب کاربری خود را انتخاب کنید.</p></div>
+        <div class="role-switcher" id="roleSwitcher">
+          <button class="role-card active" data-login-role="customer"><span>♙</span><strong>مشتری</strong><small>پروفایل و پت‌های من</small></button>
+          <button class="role-card" data-login-role="vet"><span>⚕</span><strong>دامپزشک</strong><small>پرونده‌ها و درمان</small></button>
+          <button class="role-card" data-login-role="admin"><span>⚙</span><strong>ادمین</strong><small>مدیریت کل سامانه</small></button>
+        </div>
+        <form id="loginForm" class="login-form">
+          <label id="customerAccountField">حساب مشتری<select id="loginCustomer"></select></label>
+          <label id="loginEmailField" class="hidden-field">ایمیل سازمانی<input id="loginEmail" type="email" placeholder="doctor@petclinic.ir" /></label>
+          <label>رمز عبور<input id="loginPassword" type="password" value="123456" placeholder="رمز عبور آزمایشی: 123456" required /></label>
+          <div class="login-options"><label class="remember"><input type="checkbox" checked /> مرا به خاطر بسپار</label><button type="button" class="text-button">بازیابی رمز عبور</button></div>
+          <button class="button primary login-submit" type="submit">ورود به پنل مشتری <span>←</span></button>
+          <p class="login-hint">نسخه نمایشی: همه حساب‌ها با رمز <b>123456</b> وارد می‌شوند.</p>
+        </form>
+      </div>
+    </section>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <button class="drawer-close" id="drawerClose" aria-label="بستن پنل">×</button>
+        <div class="brand">
+          <div class="brand-mark">✚</div>
+          <div>
+            <strong>پت‌کلینیک</strong>
+            <span>مدیریت هوشمند کلینیک</span>
+          </div>
+        </div>
+
+        <div class="clinic-switcher">
+          <div class="clinic-avatar">د</div>
+          <div>
+            <strong>کلینیک دکتر پارسا</strong>
+            <span>شعبه ونک</span>
+          </div>
+          <button class="icon-button small" aria-label="تغییر کلینیک">⌄</button>
+        </div>
+
+        <nav class="main-nav" aria-label="منوی اصلی">
+          <p class="nav-label">مدیریت</p>
+          <button class="nav-item active" data-section="dashboard" data-permission="all"><span>▦</span> نمای کلی <b>۲</b></button>
+          <button class="nav-item" data-section="customers" data-permission="all"><span>♙</span> مشتریان</button>
+          <button class="nav-item" data-section="pets" data-permission="all"><span>♡</span> پرونده حیوانات</button>
+          <button class="nav-item" data-section="appointments" data-permission="staff"><span>◷</span> نوبت‌ها <b class="alert-badge">۵</b></button>
+
+          <p class="nav-label">خدمات پزشکی</p>
+          <button class="nav-item" data-section="records" data-permission="staff"><span>▤</span> پرونده پزشکی</button>
+          <button class="nav-item" data-section="laboratory" data-permission="staff"><span>⌁</span> آزمایشگاه <b class="alert-badge">۳</b></button>
+          <button class="nav-item" data-section="imaging" data-permission="staff"><span>◉</span> تصویربرداری</button>
+          <button class="nav-item" data-section="nutrition" data-permission="staff"><span>✣</span> جیره‌سازی هوشمند</button>
+
+          <p class="nav-label">سیستم</p>
+          <button class="nav-item" data-section="reports" data-permission="staff"><span>▥</span> گزارش‌ها</button>
+          <button class="nav-item" data-section="settings" data-permission="staff"><span>⚙</span> تنظیمات</button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="help-card">
+            <div class="help-icon">?</div>
+            <div>
+              <strong>نیاز به راهنمایی دارید؟</strong>
+              <span>مرکز پشتیبانی پت‌کلینیک</span>
+            </div>
+          </div>
+          <button class="profile-mini" id="openProfile">
+            <div class="avatar teal">م</div>
+            <div><strong id="sessionUserName">مریم احمدی</strong><span id="sessionUserRole">مدیر کلینیک</span></div>
+            <span class="more">•••</span>
+          </button>
+          <button class="logout-button" id="logoutButton">↪ خروج از حساب</button>
+        </div>
+      </aside>
+      <div class="drawer-overlay" id="drawerOverlay"></div>
+
+      <main class="main-content">
+        <header class="topbar">
+          <button class="mobile-menu-button" id="mobileMenuButton" aria-label="باز کردن منو">☰</button>
+          <div class="mobile-brand"><div class="brand-mark">✚</div><strong>پت‌کلینیک</strong></div>
+          <div class="breadcrumbs"><span>پیشخوان</span><i> / </i><strong id="pageTitle">نمای کلی</strong></div>
+          <div class="topbar-actions">
+            <label class="search-box">
+              <span>⌕</span>
+              <input id="globalSearch" type="search" placeholder="جستجوی مشتری، حیوان یا پرونده..." />
+              <kbd>⌘ K</kbd>
+            </label>
+            <button class="icon-button notification" aria-label="اعلان‌ها">♢<i></i></button>
+            <button class="icon-button theme-toggle" id="themeToggle" aria-label="تغییر حالت رنگ">☼</button>
+            <button class="preference-button" id="uiModeToggle" type="button" aria-label="تغییر حالت کاربری">حالت حرفه‌ای</button>
+            <button class="icon-button preference-icon" id="fontScaleToggle" type="button" aria-label="درشت‌تر کردن نوشته‌ها">A+</button>
+            <button class="icon-button preference-icon" id="contrastToggle" type="button" aria-label="فعال کردن کنتراست بیشتر">◐</button>
+            <button class="topbar-logout" id="topbarLogoutButton" type="button">↪ خروج</button>
+          </div>
+        </header>
+
+        <div id="appView">
+          <section class="page-section active" data-view="dashboard">
+            <div class="page-heading">
+              <div>
+                <div class="eyebrow">پنج‌شنبه، ۲۹ مرداد ۱۴۰۵</div>
+                <h1>صبح بخیر، مریم <span>👋</span></h1>
+                <p>امروز هم مراقبت بهتر از حیوانات، با تصمیم‌های دقیق‌تر شروع می‌شود.</p>
+              </div>
+              <div class="heading-actions">
+                <button class="button ghost" id="exportButton">↓ خروجی امروز</button>
+                <button class="button primary" id="addPetButton">＋ ثبت حیوان جدید</button>
+              </div>
+            </div>
+
+            <section class="simple-mode-guide" id="simpleModeGuide" hidden>
+              <div class="simple-guide-copy">
+                <div class="eyebrow">راهنمای سریع</div>
+                <h2>کارهای اصلی امروز</h2>
+                <p>برای شروع، یکی از کارهای پرکاربرد زیر را انتخاب کنید.</p>
+              </div>
+              <div class="simple-action-grid">
+                <button type="button" data-simple-action="customers"><span>♙</span><strong>جستجوی مشتری</strong><small>پروفایل و پت‌ها</small></button>
+                <button type="button" data-simple-action="records"><span>▤</span><strong>ثبت ویزیت</strong><small>معاینه و یادداشت پزشک</small></button>
+                <button type="button" data-simple-action="laboratory"><span>⌁</span><strong>ثبت آزمایش</strong><small>نتیجه و محدوده نرمال</small></button>
+                <button type="button" data-simple-action="nutrition"><span>✣</span><strong>جیره‌نویسی</strong><small>برنامه تغذیه پت</small></button>
+              </div>
+            </section>
+
+            <div class="stats-grid">
+              <article class="stat-card">
+                <div class="stat-top"><span class="stat-icon blue">♙</span><span class="trend positive">↗ ۱۲٪</span></div>
+                <span class="stat-label">مشتریان فعال</span><strong class="stat-value">۱,۲۴۸</strong><span class="stat-caption">در ۳۰ روز گذشته</span>
+              </article>
+              <article class="stat-card">
+                <div class="stat-top"><span class="stat-icon peach">♡</span><span class="trend positive">↗ ۸٪</span></div>
+                <span class="stat-label">حیوانات تحت مراقبت</span><strong class="stat-value">۲,۸۶۴</strong><span class="stat-caption">پرونده ثبت‌شده</span>
+              </article>
+              <article class="stat-card">
+                <div class="stat-top"><span class="stat-icon purple">◷</span><span class="trend neutral">امروز</span></div>
+                <span class="stat-label">نوبت‌های امروز</span><strong class="stat-value">۲۸</strong><span class="stat-caption">۵ مورد در انتظار پذیرش</span>
+              </article>
+              <article class="stat-card">
+                <div class="stat-top"><span class="stat-icon green">₮</span><span class="trend positive">↗ ۲۱٪</span></div>
+                <span class="stat-label">درآمد این ماه</span><strong class="stat-value">۱۸۶,۴۰۰,۰۰۰</strong><span class="stat-caption">تومان</span>
+              </article>
+            </div>
+
+            <div class="dashboard-grid">
+              <section class="panel schedule-panel">
+                <div class="panel-heading">
+                  <div><h2>نوبت‌های امروز</h2><p>برنامه پنج‌شنبه، ۲۹ مرداد</p></div>
+                  <button class="text-button" data-section-link="appointments">مشاهده همه <span>←</span></button>
+                </div>
+                <div class="schedule-list">
+                  <article class="schedule-row">
+                    <time>۰۹:۰۰</time><div class="timeline-line"></div><div class="pet-avatar cat">🐱</div>
+                    <div class="appointment-info"><strong>میلو <small>گربه پرشین</small></strong><span>معاینه دوره‌ای · دکتر رضایی</span></div>
+                    <span class="status success">تأیید شده</span><button class="row-more">•••</button>
+                  </article>
+                  <article class="schedule-row">
+                    <time>۱۰:۳۰</time><div class="timeline-line"></div><div class="pet-avatar dog">🐶</div>
+                    <div class="appointment-info"><strong>راکی <small>سگ ژرمن</small></strong><span>آزمایش خون · دکتر پارسا</span></div>
+                    <span class="status warning">در انتظار</span><button class="row-more">•••</button>
+                  </article>
+                  <article class="schedule-row current">
+                    <time>۱۲:۰۰</time><div class="timeline-line"></div><div class="pet-avatar rabbit">🐰</div>
+                    <div class="appointment-info"><strong>پونه <small>خرگوش هلندی</small></strong><span>ویزیت تغذیه · دکتر موسوی</span></div>
+                    <span class="status blue-status">در حال ویزیت</span><button class="row-more">•••</button>
+                  </article>
+                  <article class="schedule-row">
+                    <time>۱۴:۳۰</time><div class="timeline-line"></div><div class="pet-avatar dog">🐕</div>
+                    <div class="appointment-info"><strong>لونا <small>سگ گلدن رتریور</small></strong><span>سونوگرافی · بخش تصویربرداری</span></div>
+                    <span class="status success">تأیید شده</span><button class="row-more">•••</button>
+                  </article>
+                </div>
+              </section>
+
+              <section class="panel health-panel">
+                <div class="panel-heading"><div><h2>وضعیت سلامت</h2><p>نیازمند توجه تیم پزشکی</p></div><button class="icon-button small">•••</button></div>
+                <div class="health-summary"><div class="donut"><span>۲۸۶۴<strong>حیوان</strong></span></div><div class="health-legend"><div><i class="dot blue-dot"></i><span>پایدار</span><b>۲,۴۸۰</b></div><div><i class="dot orange-dot"></i><span>پیگیری لازم</span><b>۲۹۶</b></div><div><i class="dot red-dot"></i><span>مراقبت ویژه</span><b>۸۸</b></div></div></div>
+                <div class="health-alert"><span>!</span><div><strong>۳ نتیجه آزمایش بحرانی</strong><p>برای بررسی پزشک منتظر هستند.</p></div><button class="text-button" data-section-link="laboratory">بررسی</button></div>
+              </section>
+            </div>
+
+            <div class="bottom-grid">
+              <section class="panel pets-panel">
+                <div class="panel-heading"><div><h2>حیوانات اخیر</h2><p>آخرین پرونده‌های ثبت یا به‌روزرسانی‌شده</p></div><button class="text-button" data-section-link="pets">مشاهده همه <span>←</span></button></div>
+                <div class="pet-table">
+                  <div class="table-row table-head"><span>حیوان</span><span>صاحب</span><span>وضعیت</span><span>آخرین مراجعه</span><span></span></div>
+                  <div class="table-row"><div class="animal-cell"><div class="pet-avatar mini cat">🐱</div><strong>میلو<small>گربه پرشین · ۳ ساله</small></strong></div><span>سارا کریمی</span><span class="status success">پایدار</span><span>امروز، ۰۹:۰۰</span><button class="row-more">•••</button></div>
+                  <div class="table-row"><div class="animal-cell"><div class="pet-avatar mini dog">🐶</div><strong>راکی<small>سگ ژرمن · ۵ ساله</small></strong></div><span>امیر رحیمی</span><span class="status warning">پیگیری</span><span>۲ روز پیش</span><button class="row-more">•••</button></div>
+                  <div class="table-row"><div class="animal-cell"><div class="pet-avatar mini rabbit">🐰</div><strong>پونه<small>خرگوش هلندی · ۲ ساله</small></strong></div><span>نسترن محمدی</span><span class="status blue-status">مراقبت ویژه</span><span>امروز، ۱۲:۰۰</span><button class="row-more">•••</button></div>
+                </div>
+              </section>
+              <section class="panel quick-panel">
+                <div class="panel-heading"><div><h2>دسترسی سریع</h2><p>کارهای پرکاربرد کلینیک</p></div></div>
+                <div class="quick-actions"><button id="quickCustomer"><span class="quick-icon teal">♙</span><strong>ثبت مشتری جدید</strong><small>ساخت پروفایل و معرفی پت</small><b>←</b></button><button id="quickAppointment"><span class="quick-icon purple">◷</span><strong>رزرو نوبت</strong><small>تقویم پزشکان و خدمات</small><b>←</b></button><button id="quickLab"><span class="quick-icon orange">⌁</span><strong>ثبت نتیجه آزمایش</strong><small>افزودن به پرونده پزشکی</small><b>←</b></button></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="page-section" data-view="customers">
+            <div class="page-heading"><div><div class="eyebrow">مدیریت ارتباط با مشتری</div><h1>پروفایل مشتریان</h1><p>هر مشتری یک پروفایل کامل دارد و تمام پت‌های او در همان پروفایل مدیریت می‌شوند.</p></div><button class="button primary" id="addCustomerButton" type="button">＋ ثبت مشتری جدید</button></div>
+            <div class="customer-layout"><section class="panel customer-list-panel"><div class="panel-heading"><div><h2>لیست مشتریان</h2><p id="customerCount">۱,۲۴۸ پروفایل فعال</p></div><label class="table-search">⌕ <input placeholder="جستجوی نام یا شماره..." id="customerSearch" /></label></div><div id="customerList" class="customer-list"></div></section><section class="panel profile-preview" id="customerPreview"><div class="empty-preview"><span>♙</span><h2>یک مشتری را انتخاب کنید</h2><p>پروفایل مشتری و پت‌های ثبت‌شده او اینجا نمایش داده می‌شود.</p></div></section></div>
+          </section>
+
+          <section class="page-section" data-view="pets">
+            <div class="page-heading"><div><div class="eyebrow">پرونده‌های حیوانات</div><h1>همه پت‌ها</h1><p>پرونده سلامت هر حیوان به پروفایل صاحب آن متصل است.</p></div><button class="button primary" id="addPetButtonAlt">＋ ثبت حیوان جدید</button></div>
+            <div class="filter-bar"><div class="filter-tabs"><button class="active">همه <b>۲,۸۶۴</b></button><button>سگ‌ها <b>۱,۶۲۰</b></button><button>گربه‌ها <b>۱,۰۱۴</b></button><button>سایر <b>۲۳۰</b></button></div><label class="table-search">⌕ <input placeholder="جستجوی نام پت..." id="petSearch" /></label></div><div id="petGrid" class="pet-grid"></div>
+          </section>
+
+          <section class="page-section placeholder-section" data-view="appointments"><div class="placeholder-icon">◷</div><div class="eyebrow">برنامه‌ریزی کلینیک</div><h1>نوبت‌ها و تقویم پزشکان</h1><p>تقویم روزانه، رزرو آنلاین، صف پذیرش و یادآوری خودکار در این بخش مدیریت می‌شود.</p><button class="button primary">＋ رزرو نوبت جدید</button></section>
+          <section class="page-section placeholder-section" data-view="records"><div class="placeholder-icon">▤</div><div class="eyebrow">پرونده الکترونیک</div><h1>پرونده‌های پزشکی</h1><p>Timeline کامل ویزیت، تشخیص، نسخه، آزمایش و تصویربرداری حیوانات.</p><button class="button primary">مشاهده پرونده‌های اخیر</button></section>
+          <section class="page-section placeholder-section" data-view="laboratory"><div class="placeholder-icon">⌁</div><div class="eyebrow">آزمایشگاه</div><h1>نتایج آزمایش و هشدارهای بحرانی</h1><p>۳ نتیجه آزمایش نیازمند بررسی فوری پزشک هستند.</p><button class="button primary">ثبت درخواست آزمایش</button></section>
+          <section class="page-section placeholder-section" data-view="imaging"><div class="placeholder-icon">◉</div><div class="eyebrow">تصویربرداری پزشکی</div><h1>رادیولوژی و سونوگرافی</h1><p>آپلود امن تصاویر، گزارش ساختاریافته و آماده‌سازی برای پشتیبانی DICOM.</p><button class="button primary">＋ ثبت مطالعه جدید</button></section>
+          <section class="page-section" data-view="nutrition">
+            <div class="page-heading">
+              <div>
+                <div class="eyebrow">تغذیه درمانی هوشمند</div>
+                <h1>جیره‌سازی حرفه‌ای</h1>
+                <p>سیستم جامع جیره‌نویسی با تحلیل وضعیت سلامت، بررسی تضادهای دامپزشکی و محاسبه دقیق نیاز انرژی</p>
+              </div>
+              <div class="heading-actions">
+                <button class="button ghost" id="nutritionExport">↓ خروجی گزارش</button>
+                <button class="button primary" id="nutritionNew">＋ جیره جدید</button>
+              </div>
+            </div>
+
+            <!-- Pet Selection -->
+            <div class="panel">
+              <div class="panel-heading">
+                <div><h2>انتخاب حیوان</h2><p>پت مورد نظر را برای جیره‌نویسی انتخاب کنید</p></div>
+              </div>
+              <div class="pet-selector-grid" id="nutritionPetSelector">
+                <!-- Pets will be loaded here -->
+              </div>
+            </div>
+
+            <!-- Advanced Nutrition Workspace -->
+            <div class="nutrition-workspace" id="nutritionWorkspace" style="display: none;">
+              <!-- BCS and Status -->
+              <div class="panel">
+                <div class="panel-heading">
+                  <div><h2>وضعیت بدنی و نیاز انرژی</h2><p>نمره BCS و محاسبه کالری</p></div>
+                <button class="icon-button small" onclick="calculateBCS()">🔄 محاسبه مجدد</button>
+                </div>
+                <div class="bcs-calculator">
+                  <div class="bcs-display">
+                    <div class="bcs-score-display">
+                      <span class="bcs-number" id="bcsScoreDisplay">5</span>
+                      <span class="bcs-total">از 9</span>
+                    </div>
+                    <div class="bcs-status" id="bcsStatus">✅ ایده‌آل</div>
+                  </div>
+                  <div class="bcs-selector">
+                    <label class="bcs-radio"><input type="radio" name="bcs" value="1"><span>1</span><small>بسیار لاغر</small></label>
+                    <label class="bcs-radio"><input type="radio" name="bcs" value="2"><span>2</span><small>لاغر</small></label>
+                    <label class="bcs-radio"><input type="radio" name="bcs" value="3"><span>3</span><small>کمی لاغر</small></label>
+                    <label class="bcs-radio"><input type="radio" name="bcs" value="4"><span>4</span><small>خوب</small></label>
+                    <label class="bcs-radio"><input type="radio" name="bcs" value="5" checked><span>5</span><small>⭐ ایده‌آل</small></label>
+                    <label class="bcs-radio"><input type="radio" name="bcs" value="6"><span>6</span><small>خوب</small></label>
+                    <label class="bcs-radio"><input type="radio" name="bcs" value="7"><span>7</span><small>اضافه وزن</small></label>
+                    <label class="bcs-radio"><input type="radio" name="bcs" value="8"><span>8</span><small>چاق</small></label>
+                    <label class="bcs-radio"><input type="radio" name="bcs" value="9"><span>9</span><small>بسیار چاق</small></label>
+                  </div>
+                  <div class="calorie-result">
+                    <div class="calorie-box">
+                      <span class="calorie-label">RER</span>
+                      <span class="calorie-value" id="rerValue">---</span>
+                      <span class="calorie-unit">kcal</span>
+                    </div>
+                    <div class="calorie-arrow">→</div>
+                    <div class="calorie-box primary">
+                      <span class="calorie-label">MER</span>
+                      <span class="calorie-value" id="merValue">---</span>
+                      <span class="calorie-unit">kcal</span>
+                    </div>
+                  </div>
+                  <div class="water-need">
+                    <span class="water-icon">💧</span>
+                    <span class="water-label">نیاز آبی روزانه:</span>
+                    <span class="water-value" id="waterNeedValue">---</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Diseases and Conditions -->
+              <div class="panel">
+                <div class="panel-heading">
+                  <div><h2>بیماری‌ها و مشکلات</h2><p>انتخاب شرایط پزشکی برای تنظیم جیره</p></div>
+                </div>
+                <div class="diseases-grid" id="diseasesGrid">
+                  <!-- Diseases will be loaded here -->
+                </div>
+              </div>
+
+              <!-- Medications -->
+              <div class="panel">
+                <div class="panel-heading">
+                  <div><h2>داروهای مصرفی</h2><p>بررسی تداخلات دارویی با رژیم غذایی</p></div>
+                </div>
+                <div class="medications-container" id="medicationsContainer">
+                  <!-- Medications will be loaded here -->
+                </div>
+              </div>
+
+              <!-- Lab Results -->
+              <div class="panel">
+                <div class="panel-heading">
+                  <div><h2>نتایج آزمایشات</h2><p>تحلیل نتایج آزمایش برای تنظیم جیره</p></div>
+                  <button class="button ghost btn-sm" id="analyzeLabBtn">🔍 تحلیل نتایج</button>
+                </div>
+                <div class="lab-results-container" id="labResultsContainer">
+                  <!-- Lab results will be loaded here -->
+                </div>
+                <div class="lab-analysis" id="labAnalysis" style="display: none;">
+                  <!-- Analysis results will appear here -->
+                </div>
+              </div>
+
+              <!-- Available Ingredients -->
+              <div class="panel">
+                <div class="panel-heading">
+                  <div><h2>مواد خوراکی در دسترس</h2><p>انتخاب مواد موجود در انبار کلینیک</p></div>
+                  <div class="ingredient-counter">
+                    <span>مواد انتخاب شده:</span>
+                    <span class="counter-value" id="selectedIngredientsCount">0</span>
+                  </div>
+                </div>
+                <div class="toxic-warning" id="toxicWarning" style="display: none;">
+                  <div class="toxic-warning-title">⚠️ هشدار مواد سمی</div>
+                  <div class="toxic-list" id="toxicList"></div>
+                </div>
+                <div class="ingredients-container" id="ingredientsContainer">
+                  <!-- Ingredients will be loaded here -->
+                </div>
+              </div>
+
+              <!-- Conflict Detection -->
+              <div class="panel">
+                <div class="panel-heading">
+                  <div><h2>بررسی تضادهای دامپزشکی</h2><p>سیستم هوشمند بررسی تعارضات</p></div>
+                  <button class="button primary" id="checkConflictsBtn">🔍 بررسی تضادها</button>
+                </div>
+                <div class="conflict-results" id="conflictResults">
+                  <div class="info-box">
+                    <i class="fas fa-info-circle"></i>
+                    برای شروع جیره‌نویسی، ابتدا دکمه "بررسی تضادها" را بزنید
+                  </div>
+                </div>
+              </div>
+
+              <!-- Generate Diet -->
+              <div class="panel">
+                <div class="panel-heading">
+                  <div><h2>تولید جیره هوشمند</h2><p>ایجاد جیره بر اساس تمام اطلاعات</p></div>
+                </div>
+                <div class="generate-section">
+                  <div class="generation-modes">
+                    <label class="mode-radio">
+                      <input type="radio" name="genMode" value="manual" checked>
+                      <span>📋 دستی</span>
+                      <small>ایجاد پرامپت برای AI</small>
+                    </label>
+                    <label class="mode-radio">
+                      <input type="radio" name="genMode" value="deepseek">
+                      <span>🤖 DeepSeek</span>
+                      <small>اتصال به API</small>
+                    </label>
+                    <label class="mode-radio">
+                      <input type="radio" name="genMode" value="gapgpt">
+                      <span>🚀 گپ‌جی‌پی‌تی</span>
+                      <small>اتصال به API</small>
+                    </label>
+                  </div>
+                  <div class="api-key-section" id="apiKeySection" style="display: none;">
+                    <label>API Key</label>
+                    <input type="password" id="apiKeyInput" placeholder="کلید API خود را وارد کنید">
+                    <button class="button ghost btn-sm" id="testApiBtn">🔗 تست اتصال</button>
+                  </div>
+                  <div class="generate-buttons">
+                    <button class="button primary" id="generateDietBtn" disabled>✨ تولید جیره</button>
+                    <button class="button ghost" id="clearResultBtn">🗑️ پاک کردن</button>
+                  </div>
+                </div>
+                <div class="diet-result" id="dietResult" style="display: none;">
+                  <!-- Generated diet will appear here -->
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="page-section placeholder-section" data-view="reports"><div class="placeholder-icon">▥</div><div class="eyebrow">تحلیل عملکرد</div><h1>گزارش‌ها و داشبورد مدیریتی</h1><p>گزارش درآمد، عملکرد پزشکان، مراجعه‌ها و وضعیت سلامت کلینیک.</p><button class="button primary">ساخت گزارش جدید</button></section>
+          <section class="page-section placeholder-section" data-view="settings"><div class="placeholder-icon">⚙</div><div class="eyebrow">پیکربندی سامانه</div><h1>تنظیمات کلینیک</h1><p>مدیریت نقش‌ها، تعرفه‌ها، خدمات، قوانین تغذیه‌ای و تنظیمات برند.</p><button class="button primary">ویرایش تنظیمات</button></section>
+        </div>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="petModal">
+      <form class="modal" id="petForm">
+        <button type="button" class="modal-close" data-close-modal>×</button>
+        <div class="modal-icon">🐾</div><div class="eyebrow">پرونده حیوان جدید</div><h2>معرفی پت</h2><p>حیوان را به پروفایل مشتری متصل کنید تا سابقه او یکجا بماند.</p>
+        <div class="form-grid compact-form">
+          <label>نام پت<input required name="name" placeholder="مثلاً: لئو" /></label>
+          <label>گونه<select name="species" id="speciesSelect"><option>سگ</option><option>گربه</option><option>خرگوش</option><option>پرنده</option></select></label>
+          <label>نژاد<select required name="breed" id="breedSelect"></select><small class="field-hint">برای هر گونه حداقل ۲۰ نژاد</small></label>
+          <label>وزن فعلی<input name="weight" type="number" min="0" step="0.1" placeholder="کیلوگرم" /></label>
+          <label class="wide-field">صاحب پت<select name="owner" id="ownerSelect"></select></label>
+        </div>
+        <div class="birthdate-block">
+          <div class="field-label-row"><span>تاریخ تولد</span><small>تقویم شمسی · برای محاسبه دقیق سن</small></div>
+          <div class="birthdate-grid">
+            <label>روز<select name="birthDay" id="birthDay"></select></label>
+            <label>ماه<select name="birthMonth" id="birthMonth"></select></label>
+            <label>سال<select name="birthYear" id="birthYear"></select></label>
+            <div class="age-preview" id="agePreview"><span>سن محاسبه‌شده</span><strong>—</strong></div>
+          </div>
+        </div>
+        <div class="note-block">
+          <div class="field-label-row"><span>یادداشت اولیه</span><small>یک مورد آماده را انتخاب کنید یا متن را ویرایش کنید</small></div>
+          <select id="notePreset" class="note-preset"><option value="">انتخاب یادداشت آماده...</option></select>
+          <textarea name="note" id="initialNote" placeholder="حساسیت، بیماری زمینه‌ای یا توضیح مهم..."></textarea>
+        </div>
+        <div class="modal-actions"><button type="button" class="button ghost" data-close-modal>انصراف</button><button class="button primary" type="submit">ذخیره پرونده پت</button></div>
+      </form>
+    </div>
+
+    <div class="modal-backdrop" id="profileModal">
+      <form class="modal small-modal" id="profileForm">
+        <button type="button" class="modal-close" data-close-modal>×</button><div class="avatar teal large-avatar">م</div><h2>پروفایل کاربری</h2><p>اطلاعات مدیر کلینیک و تنظیمات حساب کاربری.</p><label>نام و نام خانوادگی<input value="مریم احمدی" /></label><label>سمت سازمانی<input value="مدیر کلینیک" /></label><label>شماره تماس<input value="۰۹۱۲ ۱۲۳ ۴۵۶۷" /></label>
+        <div class="preference-panel">
+          <div><strong>شخصی‌سازی محیط کار</strong><small>این تنظیمات فقط برای همین مرورگر ذخیره می‌شود.</small></div>
+          <label>حالت استفاده<select id="profileUiMode"><option value="professional">حالت حرفه‌ای · همه امکانات</option><option value="simple">حالت ساده · تمرکز بر کارهای اصلی</option></select></label>
+          <label class="preference-check"><input type="checkbox" id="profileLargeUi" /> نوشته‌ها و دکمه‌های درشت‌تر</label>
+          <label class="preference-check"><input type="checkbox" id="profileHighContrast" /> کنتراست بیشتر برای خوانایی</label>
+        </div>
+        <div class="modal-actions"><button type="button" class="button ghost" data-close-modal>بستن</button><button type="submit" class="button primary">ذخیره تغییرات</button></div>
+      </form>
+    </div>
+
+    <div class="modal-backdrop" id="customerModal">
+      <form class="modal small-modal" id="customerForm">
+        <button type="button" class="modal-close" data-close-modal>×</button>
+        <div class="modal-icon">♙</div><div class="eyebrow">پروفایل مشتری</div><h2>ثبت مشتری جدید</h2><p>پس از ثبت، می‌توانید پت‌های این مشتری را به پروفایل او اضافه کنید.</p>
+        <label>نام و نام خانوادگی<input required name="name" placeholder="مثلاً: سارا کریمی" /></label>
+        <label>شماره موبایل<input required name="phone" placeholder="۰۹۱۲ ۱۲۳ ۴۵۶۷" /></label>
+        <label>ایمیل اختیاری<input name="email" type="email" placeholder="name@email.com" /></label>
+        <div class="modal-actions"><button type="button" class="button ghost" data-close-modal>انصراف</button><button type="submit" class="button primary">ساخت پروفایل مشتری</button></div>
+      </form>
+    </div>
+
+    <div class="modal-backdrop" id="petSummaryModal">
+      <section class="modal pet-summary-modal">
+        <button type="button" class="modal-close" data-close-modal>×</button>
+        <div id="petSummaryContent"></div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="actionModal">
+      <form class="modal small-modal" id="actionForm">
+        <button type="button" class="modal-close" data-close-modal>×</button>
+        <div class="modal-icon" id="actionIcon">✣</div>
+        <div class="eyebrow" id="actionEyebrow">عملیات کلینیک</div>
+        <h2 id="actionTitle">ثبت اطلاعات</h2>
+        <p id="actionDescription">اطلاعات را کامل کنید تا در سامانه ثبت شود.</p>
+        <div id="actionFields" class="action-fields"></div>
+        <div class="modal-actions"><button type="button" class="button ghost" data-close-modal>انصراف</button><button type="submit" class="button primary" id="actionSubmit">ذخیره اطلاعات</button></div>
+      </form>
+    </div>
+
+    <div class="toast" id="toast"><span>✓</span><div><strong>انجام شد</strong><p></p></div></div>
+    <script src="app.js"></script>
+  </body>
+</html>
