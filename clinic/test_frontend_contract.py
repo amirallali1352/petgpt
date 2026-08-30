@@ -39,11 +39,14 @@ class SpeciesAwareFrontendContractTests(unittest.TestCase):
         self.assertIn("normalizeLabResult", SOURCE)
         self.assertIn("getUnifiedLabResultsForPet", SOURCE)
         self.assertIn("remoteLabResults", SOURCE)
-        self.assertIn("getUnifiedLabResultsForPet(this.currentPet.name)", SOURCE)
-        self.assertIn("getUnifiedLabResultsForPet(petName)", SOURCE)
-        self.assertIn("const unifiedLabs = this.currentPet ? getUnifiedLabResultsForPet(this.currentPet.name) : []", SOURCE)
+        self.assertIn("getUnifiedLabResultsForPet(this.currentPet.name", SOURCE)
+        self.assertIn("getUnifiedLabResultsForPet(petName", SOURCE)
+        self.assertIn("const unifiedLabs = this.currentPet ? getUnifiedLabResultsForPet(this.currentPet.name, this.currentPet.id) : []", SOURCE)
         self.assertIn("request.answers?.length", SOURCE)
         self.assertIn("nutrition-lab-result-grid", SOURCE)
+        self.assertIn("remoteLabResults(petName, petId)", SOURCE)
+        self.assertIn("Number(item.pet_id) === Number(petId)", SOURCE)
+        self.assertIn("loadRemoteData().finally(() => this.loadPetData())", SOURCE)
 
     def test_lab_catalog_has_species_ranges(self) -> None:
         self.assertRegex(SOURCE, r"dog:\s*\[[^\]]+\]")

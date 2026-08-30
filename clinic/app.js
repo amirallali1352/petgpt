@@ -763,10 +763,17 @@ function parseLabResultJson(value) {
 
 function normalizeLabResult(item, answer = {}, source = "lab") {
   const flag = answer.flag || answer.status || "";
+  const test = answer.testKey ? getLabTest(answer.testKey) : null;
+  const species = speciesKey(answer.species || item.species);
+  const range = test?.[species];
+  const numericResult = Number(String(answer.result ?? answer.value ?? "").replace(",", "."));
+  const calculatedFlag = !flag && range && Number.isFinite(numericResult)
+    ? numericResult >= range[0] && numericResult <= range[1] ? "طبیعی" : "بحرانی"
+    : flag;
   const normalizedStatus = answer.status === "danger" || answer.status === "critical" ? "danger"
     : answer.status === "success" || answer.status === "normal" ? "success"
-      : flag === "بحرانی" ? "danger"
-        : flag === "طبیعی" || flag === "منفی" ? "success" : "warning";
+      : calculatedFlag === "بحرانی" ? "danger"
+        : calculatedFlag === "طبیعی" || calculatedFlag === "منفی" ? "success" : "warning";
   return {
     id: `${source}-${item.id || item.request_id || "local"}-${answer.testKey || answer.name || item.panel || "result"}`,
     requestId: item.request_id || item.id || null,
@@ -774,7 +781,7 @@ function normalizeLabResult(item, answer = {}, source = "lab") {
     testKey: answer.testKey || "",
     result: answer.result ?? answer.value ?? answer.text ?? "—",
     unit: answer.unit || "",
-    reference: answer.reference || "",
+    reference: answer.reference || (range ? `${range[0]} تا ${range[1]} ${test.unit || ""}`.trim() : ""),
     interpretation: answer.interpretation || answer.note || "",
     date: item.created_at || item.completed_at || "",
     species: answer.species || item.species || "",
@@ -783,16 +790,16 @@ function normalizeLabResult(item, answer = {}, source = "lab") {
   };
 }
 
-function remoteLabResults(petName) {
+function remoteLabResults(petName, petId = null) {
   return remoteData.labs
-    .filter(item => item.pet_name === petName)
+    .filter(item => item.pet_name === petName || (petId && Number(item.pet_id) === Number(petId)))
     .flatMap(item => parseLabResultJson(item.result_json).map(answer => normalizeLabResult(item, answer, "lab")));
 }
 
-function getUnifiedLabResultsForPet(petName) {
-  const labRows = remoteLabResults(petName);
+function getUnifiedLabResultsForPet(petName, petId = null) {
+  const labRows = remoteLabResults(petName, petId);
   const requestRows = remoteData.labRequests
-    .filter(item => item.pet_name === petName && item.status === "completed")
+    .filter(item => (item.pet_name === petName || (petId && Number(item.pet_id) === Number(petId))) && item.status === "completed")
     .flatMap(item => parseLabResultJson(item.result_json).map(answer => normalizeLabResult(item, answer, "request")))
     .filter(row => !labRows.some(lab => (
       lab.requestId && row.requestId && lab.requestId === row.requestId &&
@@ -2307,14 +2314,18 @@ const nutritionSystem = {
     if (!this.currentPet) return;
     
     document.getElementById('nutritionWorkspace').style.display = 'flex';
-    this.loadPetData();
+    if (session?.token) {
+      loadRemoteData().finally(() => this.loadPetData());
+    } else {
+      this.loadPetData();
+    }
   },
   
   loadPetData: function() {
     if (!this.currentPet) return;
     
     // Load clinical data
-    const unifiedLabs = getUnifiedLabResultsForPet(this.currentPet.name);
+    const unifiedLabs = getUnifiedLabResultsForPet(this.currentPet.name, this.currentPet.id);
     const clinical = getPetClinicalRecord(this.currentPet.name);
     
     // Load diseases
@@ -2477,7 +2488,7 @@ const nutritionSystem = {
     if (!container) return;
     const species = speciesKey(this.currentPet?.species);
     const speciesLabel = species === "cat" ? "گربه" : "سگ";
-    const unifiedLabs = this.currentPet ? getUnifiedLabResultsForPet(this.currentPet.name) : [];
+    const unifiedLabs = this.currentPet ? getUnifiedLabResultsForPet(this.currentPet.name, this.currentPet.id) : [];
     const resultCards = unifiedLabs.map(lab => `
       <article class="nutrition-lab-result-card ${lab.status}">
         <div class="nutrition-lab-result-card-head">
