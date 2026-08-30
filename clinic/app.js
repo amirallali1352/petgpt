@@ -88,29 +88,29 @@ const labTestsCatalog = {
 
 // Diseases and Conditions Data from Pet Meal system
 const diseasesCatalog = [
-  { fa: "✅ سالم", en: "Healthy", hasSubItems: false },
-  { fa: "چاقی", en: "Obesity", hasSubItems: false },
-  { fa: "دیابت", en: "Diabetes Mellitus", hasSubItems: false },
-  { fa: "بیماری مزمن کلیه", en: "Chronic Kidney Disease (CKD)", hasSubItems: false },
-  { fa: "سنگ کلیه و مثانه", en: "Urinary Stones (Urolithiasis)", hasSubItems: true, subItems: [
+  { fa: "✅ سالم", en: "Healthy", species: ["dog", "cat"], hasSubItems: false },
+  { fa: "چاقی", en: "Obesity", species: ["dog", "cat"], hasSubItems: false },
+  { fa: "دیابت", en: "Diabetes Mellitus", species: ["dog", "cat"], hasSubItems: false },
+  { fa: "بیماری مزمن کلیه", en: "Chronic Kidney Disease (CKD)", species: ["dog", "cat"], hasSubItems: false },
+  { fa: "سنگ کلیه و مثانه", en: "Urinary Stones (Urolithiasis)", species: ["dog", "cat"], hasSubItems: true, subItems: [
     { fa: "سنگ اگزالات کلسیم", en: "Calcium Oxalate Stone" },
     { fa: "سنگ استروویت", en: "Struvite Stone" },
     { fa: "سنگ سیستین", en: "Cystine Stone" },
     { fa: "سنگ اورات", en: "Urate Stone" }
   ]},
-  { fa: "پانکراتیت", en: "Pancreatitis", hasSubItems: false },
-  { fa: "بیماری کبد چرب", en: "Fatty Liver Disease (Hepatic Lipidosis)", hasSubItems: false },
-  { fa: "بیماری قلبی", en: "Heart Disease (Cardiomyopathy)", hasSubItems: false },
-  { fa: "آرتروز", en: "Osteoarthritis", hasSubItems: false },
-  { fa: "کمکاری تیروئید", en: "Hypothyroidism", hasSubItems: false },
-  { fa: "پرکاری تیروئید", en: "Hyperthyroidism", hasSubItems: false },
-  { fa: "بیماری التهابی روده", en: "Inflammatory Bowel Disease (IBD)", hasSubItems: false },
-  { fa: "آلرژی غذایی", en: "Food Allergy", hasSubItems: false },
-  { fa: "صرع", en: "Epilepsy", hasSubItems: false },
-  { fa: "بیماری کوشینگ", en: "Cushing's Disease", hasSubItems: false },
-  { fa: "کم‌خونی", en: "Anemia", hasSubItems: false },
-  { fa: "لوسمی گربه", en: "Feline Leukemia (FeLV)", hasSubItems: false },
-  { fa: "ایدز گربه", en: "Feline Immunodeficiency Virus (FIV)", hasSubItems: false }
+  { fa: "پانکراتیت", en: "Pancreatitis", species: ["dog", "cat"], hasSubItems: false },
+  { fa: "بیماری کبد چرب", en: "Fatty Liver Disease (Hepatic Lipidosis)", species: ["cat"], hasSubItems: false },
+  { fa: "بیماری قلبی", en: "Heart Disease (Cardiomyopathy)", species: ["dog", "cat"], hasSubItems: false },
+  { fa: "آرتروز", en: "Osteoarthritis", species: ["dog", "cat"], hasSubItems: false },
+  { fa: "کمکاری تیروئید", en: "Hypothyroidism", species: ["dog"], hasSubItems: false },
+  { fa: "پرکاری تیروئید", en: "Hyperthyroidism", species: ["cat"], hasSubItems: false },
+  { fa: "بیماری التهابی روده", en: "Inflammatory Bowel Disease (IBD)", species: ["dog", "cat"], hasSubItems: false },
+  { fa: "آلرژی غذایی", en: "Food Allergy", species: ["dog", "cat"], hasSubItems: false },
+  { fa: "صرع", en: "Epilepsy", species: ["dog", "cat"], hasSubItems: false },
+  { fa: "بیماری کوشینگ", en: "Cushing's Disease", species: ["dog", "cat"], hasSubItems: false },
+  { fa: "کم‌خونی", en: "Anemia", species: ["dog", "cat"], hasSubItems: false },
+  { fa: "لوسمی گربه", en: "Feline Leukemia (FeLV)", species: ["cat"], hasSubItems: false },
+  { fa: "ایدز گربه", en: "Feline Immunodeficiency Virus (FIV)", species: ["cat"], hasSubItems: false }
 ];
 
 // Ingredients Data from Pet Meal system
@@ -1439,7 +1439,14 @@ function openLabAnswerModal(petName, index) {
   $("#actionForm").dataset.labPet = petName;
   $("#actionForm").dataset.labIndex = String(index);
   $("#actionForm").dataset.labRequestId = String(request.id || "");
-  $("input[name='answerTest']", $("#actionFields")).value = request.panel || "";
+  const testSelect = $("select[name='answerTest']", $("#actionFields"));
+  if (testSelect) {
+    const requestedTest = flattenLaboratoryCatalog().find(test =>
+      test.label === request.panel || test.testKey === request.testKey
+    );
+    if (requestedTest) testSelect.value = requestedTest.testKey;
+    testSelect.dispatchEvent(new Event("change"));
+  }
 }
 
 function printLaboratoryPatient(petName) {
@@ -1721,22 +1728,81 @@ function renderMedicationFields() {
 function renderLabAnswerFields() {
   const fields = $("#actionFields");
   if (!fields) return;
+  const form = $("#actionForm");
+  const petName = form?.dataset.labPet || "";
+  const pet = state.pets.find(item => item.name === petName);
+  const species = getPetSpeciesForLab(petName);
+  const speciesLabel = species === "cat" ? "گربه" : "سگ";
+  const tests = flattenLaboratoryCatalog().filter(test => test[species]);
   fields.innerHTML = `<div class="request-form-grid">
-    <label>عنوان شاخص<input name="answerTest" required placeholder="مثلاً WBC یا کراتینین" /></label>
-    <label>نتیجه<input name="result" required placeholder="مثلاً ۸.۴ یا مثبت" /></label>
-    <label>واحد<input name="unit" placeholder="مثلاً mg/dL" /></label>
-    <label>پرچم نتیجه<select name="flag"><option>طبیعی</option><option>پایین</option><option>بالا</option><option>بحرانی</option><option>مثبت</option><option>منفی</option></select></label>
-    <label>محدوده مرجع<input name="reference" placeholder="مثلاً ۰.۵ تا ۱.۸" /></label>
-    <label>تفسیر<input name="interpretation" placeholder="توضیح آزمایشگاه" /></label>
-  </div><button type="button" class="button ghost add-draft-button" id="addLabAnswerDraft">＋ افزودن شاخص به جواب</button><div class="draft-list" id="labAnswerDraftList"></div>`;
+    <label>حیوان
+      <input name="answerPet" value="${pet ? `${pet.name} · ${pet.owner || ""}` : petName}" readonly />
+    </label>
+    <label>گونه
+      <input name="answerSpecies" value="${speciesLabel}" readonly />
+    </label>
+    <label>عنوان شاخص
+      <select name="answerTest" required>${tests.map(test => `<option value="${test.testKey}">${test.groupLabel} · ${test.label}</option>`).join("")}</select>
+    </label>
+    <label>نتیجه
+      <input name="result" required placeholder="مثلاً ۸.۴ یا مثبت" />
+    </label>
+    <label>واحد
+      <input name="unit" readonly />
+    </label>
+    <label>پرچم نتیجه
+      <select name="flag"><option>طبیعی</option><option>پایین</option><option>بالا</option><option>بحرانی</option><option>مثبت</option><option>منفی</option></select>
+    </label>
+    <label>محدوده مرجع گونه
+      <input name="reference" readonly />
+    </label>
+    <label>تفسیر
+      <input name="interpretation" placeholder="توضیح آزمایشگاه" />
+    </label>
+  </div>
+  <div class="lab-answer-species-note">محدوده‌ی نمایش‌داده‌شده برای ${speciesLabel} است؛ در صورت تفاوت، مرجع همان آزمایشگاه و دستگاه اولویت دارد.</div>
+  <button type="button" class="button ghost add-draft-button" id="addLabAnswerDraft">＋ افزودن شاخص به جواب</button>
+  <div class="draft-list" id="labAnswerDraftList"></div>`;
+  const testSelect = $('select[name="answerTest"]', fields);
+  const resultInput = $('input[name="result"]', fields);
+  const unitInput = $('input[name="unit"]', fields);
+  const referenceInput = $('input[name="reference"]', fields);
+  const flagSelect = $('select[name="flag"]', fields);
+  const refreshAnswerMeta = () => {
+    const test = getLabTest(testSelect?.value);
+    const range = test?.[species];
+    if (!test || !range) return;
+    unitInput.value = test.unit || "";
+    referenceInput.value = `${range[0]} تا ${range[1]} ${test.unit || ""}`.trim();
+    const raw = String(resultInput.value || "").trim().replace(",", ".");
+    const numeric = raw !== "" && Number.isFinite(Number(raw));
+    if (numeric) {
+      const number = Number(raw);
+      flagSelect.value = number < range[0] ? "پایین" : number > range[1] ? "بالا" : "طبیعی";
+    }
+  };
+  testSelect.addEventListener("change", refreshAnswerMeta);
+  resultInput.addEventListener("input", refreshAnswerMeta);
+  refreshAnswerMeta();
   $("#addLabAnswerDraft").addEventListener("click", () => {
     const form = $("#actionForm");
-    const name = $('input[name="answerTest"]', form).value.trim();
+    const test = getLabTest($('select[name="answerTest"]', form).value);
     const result = $('input[name="result"]', form).value.trim();
-    if (!name || !result) return toast("عنوان شاخص و نتیجه را وارد کنید.");
-    actionDraftItems.labAnswer.push({ name, result, unit: $('input[name="unit"]', form).value, flag: $('select[name="flag"]', form).value, reference: $('input[name="reference"]', form).value, interpretation: $('input[name="interpretation"]', form).value });
+    if (!test || !result) return toast("عنوان شاخص و نتیجه را وارد کنید.");
+    actionDraftItems.labAnswer.push({
+      name: test.label,
+      testKey: test.testKey,
+      species,
+      result,
+      unit: $('input[name="unit"]', form).value,
+      flag: $('select[name="flag"]', form).value,
+      reference: $('input[name="reference"]', form).value,
+      interpretation: $('input[name="interpretation"]', form).value
+    });
     renderDraftLists();
-    ["answerTest", "result", "unit", "reference", "interpretation"].forEach(field => { const input = $(`[name="${field}"]`, form); if (input) input.value = ""; });
+    resultInput.value = "";
+    $('input[name="interpretation"]', form).value = "";
+    refreshAnswerMeta();
     toast("شاخص به جواب آزمایش اضافه شد.");
   });
   renderDraftLists();
@@ -2086,6 +2152,10 @@ const nutritionSystem = {
       this.selectedIngredients = parseList(savedPlan.ingredients_json, plan.ingredients || []);
       document.querySelectorAll('input[name="bcs"]').forEach(radio => { radio.checked = Number(radio.value) === this.selectedBCS; });
     }
+    // Re-render after loading a saved plan so species filtering also applies
+    // to historical selections from older records.
+    this.renderDiseases();
+    this.renderLabResults();
     
     // Calculate initial BCS and calories
     this.calculateAll();
@@ -2207,6 +2277,8 @@ const nutritionSystem = {
   loadLabTests: function() {
     const container = document.getElementById('labResultsContainer');
     if (!container) return;
+    const species = speciesKey(this.currentPet?.species);
+    const speciesLabel = species === "cat" ? "گربه" : "سگ";
     
     let html = '';
     for (const [category, data] of Object.entries(labTestsCatalog)) {
@@ -2231,6 +2303,7 @@ const nutritionSystem = {
         if (itemsContainer) {
           data.tests.forEach(test => {
             const value = this.labResults[test.field] || '';
+            const normal = test[`normal_${species}`] || "ثبت نشده";
             itemsContainer.innerHTML += `
               <div class="lab-test-item">
                 <div class="lab-test-name">${test.name} <small>(${test.unit})</small></div>
@@ -2242,8 +2315,7 @@ const nutritionSystem = {
                 </div>
                 <div class="lab-test-unit">${test.unit}</div>
                 <div class="lab-test-normal">
-                  <span class="normal-dog">${test.normal_dog}</span>
-                  <span class="normal-cat">${test.normal_cat}</span>
+                  <span class="normal-species">حد نرمال ${speciesLabel}: ${normal}</span>
                 </div>
               </div>
             `;
@@ -2277,8 +2349,13 @@ const nutritionSystem = {
   loadDiseases: function() {
     const container = document.getElementById('diseasesGrid');
     if (!container) return;
+    const species = speciesKey(this.currentPet?.species);
+    const visibleDiseases = diseasesCatalog.filter(disease => (disease.species || ["dog", "cat"]).includes(species));
+    this.selectedDiseases = this.selectedDiseases.filter(selected =>
+      visibleDiseases.some(disease => disease.fa === selected)
+    );
     
-    container.innerHTML = diseasesCatalog.map(disease => `
+    container.innerHTML = visibleDiseases.map(disease => `
       <div class="disease-item ${this.selectedDiseases.includes(disease.fa) ? 'selected' : ''}" data-disease="${disease.fa}">
         <div class="disease-name">${disease.fa}</div>
         <div class="disease-en">${disease.en}</div>
@@ -2688,9 +2765,15 @@ function getLabTest(testKey) {
   return flattenLaboratoryCatalog().find(test => test.testKey === testKey);
 }
 
+function speciesKey(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "cat" || normalized.includes("گربه") ? "cat" : "dog";
+}
+
 function getPetSpeciesForLab(value) {
   const name = petNameFromValue(value);
   const pet = state.pets.find(item => item.name === name);
+  if (speciesKey(pet?.species || value) === "cat") return "cat";
   if (pet?.species === "گربه") return "cat";
   return "dog";
 }
@@ -2812,6 +2895,7 @@ function openActionModal(action, contextPetName = "") {
   $("#actionTitle").textContent = definition.title;
   $("#actionDescription").textContent = definition.description;
   $("#actionSubmit").textContent = definition.submit;
+  if (action === "lab-answer") $("#actionForm").dataset.labPet = contextPetName || $("#examWorkspace")?.dataset.selectedPet || "";
   $("#actionFields").innerHTML = definition.fields.map(([name, label, type, options]) => {
     if (type === "select") return `<label>${label}<select name="${name}" required>${options.map(option => `<option>${option}</option>`).join("")}</select></label>`;
     if (type === "textarea") return `<label class="action-wide">${label}<textarea name="${name}" required></textarea></label>`;
