@@ -7,6 +7,7 @@ import unittest
 ROOT = Path(__file__).parent
 APP = (ROOT / "app.js").read_text(encoding="utf-8")
 HTML = (ROOT / "index.html").read_text(encoding="utf-8")
+CSS = (ROOT / "overrides.css").read_text(encoding="utf-8")
 
 
 class PetShopFrontendContractTests(unittest.TestCase):
@@ -50,6 +51,7 @@ class PetShopFrontendContractTests(unittest.TestCase):
             "shop-products",
             "shop-inventory",
             "shop-sales",
+            "shop-invoices",
             "shop-reports",
             "renderShopSidebar",
         ):
@@ -68,8 +70,19 @@ class PetShopFrontendContractTests(unittest.TestCase):
             "shop-product-form",
             "shop-stock-form",
             "shop-sale-form",
+            "shop-invoice-search",
+            "shop-invoice-list",
         ):
             self.assertIn(marker, APP)
+
+    def test_invoice_register_has_readable_invoice_cards(self) -> None:
+        for marker in (
+            ".shop-invoice-list",
+            ".shop-invoice-row",
+            ".shop-invoice-icon",
+            ".shop-invoice-actions",
+        ):
+            self.assertIn(marker, CSS)
 
     def test_javascript_syntax(self) -> None:
         import subprocess
