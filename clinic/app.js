@@ -975,10 +975,20 @@ function renderShopSidebar() {
     <div class="shop-operator"><div class="shop-operator-avatar">ف</div><div><strong>${escapeHtml(session?.name || "فروشنده پت‌شاپ")}</strong><span>حساب فروشنده</span></div><i>●</i></div>
     <nav class="shop-nav" aria-label="منوی فروشگاه">
       <small class="shop-nav-label">مدیریت فروشگاه</small>
-      ${shopModules.map(([id, label, icon]) => `<button type="button" class="shop-nav-item ${shopActiveModule === id ? "active" : ""}" data-shop-module="${id}"><span>${icon}</span><b>${label}</b>${id === "shop-sales" ? `<em>POS</em>` : ""}</button>`).join("")}
+      ${shopModules.map(([id, label, icon]) => `<button type="button" class="shop-nav-item ${shopActiveModule === id ? "active" : ""}" data-shop-module="${id}"><span>${icon}</span><b>${label}</b>${id === "shop-sales" ? `<em>POS</em>` : ""}</button>${id === "shop-products" ? `<div class="shop-products-submenu"><button type="button" class="shop-new-product" data-shop-action="new-product">＋ ثبت کالای جدید</button><button type="button" data-shop-action="product-list">فهرست کالاها</button></div>` : ""}`).join("")}
     </nav>
     <div class="shop-sidebar-footer"><div class="shop-security"><span>✓</span><div><strong>سیستم امن و فعال</strong><small>آخرین همگام‌سازی همین الان</small></div></div><button type="button" class="shop-exit" id="shopExitClinic">↩ بازگشت به کلینیک</button></div>
   </aside>`;
+}
+
+function focusShopProductForm() {
+  shopActiveModule = "shop-products";
+  renderPetShopWorkspace();
+  window.setTimeout(() => {
+    const form = $("#shopProductForm");
+    form?.scrollIntoView({ behavior: "smooth", block: "start" });
+    form?.querySelector("input[name='name']")?.focus();
+  }, 250);
 }
 
 function shopSectionTitle(eyebrow, title, description, action = "") {
@@ -1004,7 +1014,7 @@ function renderShopModule(module, data) {
   const shopGreeting = escapeHtml(session?.name || "فروشنده");
   let html = "";
   if (module === "shop-dashboard") {
-    html = `${shopSectionTitle("مرکز کنترل فروشگاه", `سلام، ${shopGreeting} 👋`, "عملیات فروش، موجودی و عملکرد پت‌شاپ را از یک صفحه کنترل کنید.", `<button class="shop-refresh" id="shopRefresh">↻ بروزرسانی</button>`)}${kpis}<div class="shop-dashboard-grid"><div class="shop-card"><div class="shop-section-title"><div><h2>آخرین فاکتورها</h2><p>آخرین فعالیت‌های فروشگاه</p></div><button class="shop-link" data-shop-target="shop-sales">مشاهده همه ←</button></div><div class="shop-sales-list">${salesRows}</div></div><div class="shop-card shop-quick-card"><div class="shop-section-title"><div><h2>دسترسی سریع</h2><p>عملیات پرتکرار صندوق‌دار</p></div></div><div class="shop-quick-actions"><button type="button" data-shop-target="shop-sales"><span>▣</span><b>فروش جدید</b><small>ثبت فاکتور و دریافت وجه</small></button><button type="button" data-shop-target="shop-products"><span>＋</span><b>ثبت کالای جدید</b><small>افزودن به کاتالوگ</small></button><button type="button" data-shop-target="shop-inventory"><span>◫</span><b>ورود به انبار</b><small>ثبت خرید و اصلاح موجودی</small></button></div></div></div>`;
+    html = `${shopSectionTitle("مرکز کنترل فروشگاه", `سلام، ${shopGreeting} 👋`, "عملیات فروش، موجودی و عملکرد پت‌شاپ را از یک صفحه کنترل کنید.", `<button class="shop-refresh" id="shopRefresh">↻ بروزرسانی</button>`)}${kpis}<div class="shop-dashboard-grid"><div class="shop-card"><div class="shop-section-title"><div><h2>آخرین فاکتورها</h2><p>آخرین فعالیت‌های فروشگاه</p></div><button class="shop-link" data-shop-target="shop-invoices">مشاهده همه ←</button></div><div class="shop-sales-list">${salesRows}</div></div><div class="shop-card shop-quick-card"><div class="shop-section-title"><div><h2>دسترسی سریع</h2><p>عملیات پرتکرار صندوق‌دار</p></div></div><div class="shop-quick-actions"><button type="button" data-shop-target="shop-sales"><span>▣</span><b>فروش جدید</b><small>ثبت فاکتور و دریافت وجه</small></button><button type="button" data-shop-action="new-product"><span>＋</span><b>ثبت کالای جدید</b><small>افزودن به کاتالوگ</small></button><button type="button" data-shop-target="shop-inventory"><span>◫</span><b>ورود به انبار</b><small>ثبت خرید و اصلاح موجودی</small></button></div></div></div>`;
   } else if (module === "shop-products") {
     html = `${shopSectionTitle("کاتالوگ و قیمت‌گذاری", "کالاها و کاتالوگ", "کالاها، بارکد، SKU، قیمت خرید و فروش را حرفه‌ای مدیریت کنید.", `<button class="shop-refresh" id="shopRefresh">↻ بروزرسانی</button>`)}<div class="shop-card shop-form-card"><div class="shop-section-title"><div><h2>ثبت کالای جدید</h2><p>اطلاعات کالا را کامل و دقیق وارد کنید.</p></div><span class="shop-badge">کاتالوگ</span></div><form id="shopProductForm" class="shop-form-grid shop-product-form"><label>نام کالا<input name="name" placeholder="مثلاً غذای خشک سگ" required /></label><label>بارکد<input name="barcode" placeholder="6260000000000" required /></label><label>SKU<input name="sku" placeholder="SKU-001" /></label><label>دسته‌بندی<input name="category" placeholder="غذا، اسباب‌بازی..." /></label><label>برند<input name="brand" placeholder="برند کالا" /></label><label>واحد<input name="unit" value="عدد" /></label><label>قیمت خرید<input name="purchase_price" type="number" min="0" placeholder="۰" required /></label><label>قیمت فروش<input name="sale_price" type="number" min="0" placeholder="۰" required /></label><label>حد سفارش<input name="reorder_level" type="number" min="0" value="0" /></label><div class="shop-form-submit"><button class="button primary" type="submit">＋ ثبت کالا</button></div></form></div><div class="shop-card shop-products-card"><div class="shop-section-title"><div><h2>فهرست کالاها</h2><p>${products.length} کالا در کاتالوگ فعال است.</p></div><label class="shop-search">⌕<input id="shopProductSearch" placeholder="نام، SKU یا بارکد..." /></label></div><div class="shop-table-wrap"><table class="shop-table"><thead><tr><th>کالا</th><th>بارکد</th><th>خرید</th><th>فروش</th><th>موجودی</th><th>وضعیت</th><th></th></tr></thead><tbody id="shopProductRows">${rows || `<tr><td colspan="7"><div class="shop-empty">کالایی ثبت نشده است.</div></td></tr>`}</tbody></table></div></div>`;
   } else if (module === "shop-inventory") {
@@ -1022,6 +1032,12 @@ function renderShopModule(module, data) {
   $$(".shop-nav-item", section).forEach(button => button.addEventListener("click", () => {
     shopActiveModule = button.dataset.shopModule;
     renderShopModule(shopActiveModule, data);
+  }));
+  $$("[data-shop-action]", section).forEach(button => button.addEventListener("click", () => {
+    if (button.dataset.shopAction === "new-product") return focusShopProductForm();
+    shopActiveModule = "shop-products";
+    renderShopModule(shopActiveModule, data);
+    window.setTimeout(() => $("#shopProductSearch", section)?.focus(), 100);
   }));
   $("#shopExitClinic", section)?.addEventListener("click", () => {
     document.body.classList.remove("shop-mode");

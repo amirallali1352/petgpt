@@ -75,6 +75,15 @@ class PetShopFrontendContractTests(unittest.TestCase):
         ):
             self.assertIn(marker, APP)
 
+    def test_new_product_action_is_visible_from_shop_submenu_and_dashboard(self) -> None:
+        for marker in (
+            "shop-products-submenu",
+            "shop-new-product",
+            "data-shop-action=\"new-product\"",
+            "focusShopProductForm",
+        ):
+            self.assertIn(marker, APP)
+
     def test_invoice_register_has_readable_invoice_cards(self) -> None:
         for marker in (
             ".shop-invoice-list",
