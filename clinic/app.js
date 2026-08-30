@@ -485,6 +485,23 @@ const medicationCatalog = {
 const $ = (selector, parent = document) => parent.querySelector(selector);
 const $$ = (selector, parent = document) => [...parent.querySelectorAll(selector)];
 const API_BASE = "http://127.0.0.1:8001/api";
+let remoteModuleData = {
+  imaging: [],
+  prescriptions: [],
+  nutrition: [],
+  inventory: []
+};
+
+function escapeHtml(value = "") {
+  return String(value).replace(/[&<>"']/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[character]));
+}
+
+function normalizeWeight(value) {
+  const weight = Number.parseFloat(String(value ?? "").replace(",", "."));
+  return Number.isFinite(weight) && weight > 0 ? weight : 1;
+}
 
 async function apiRequest(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
@@ -497,12 +514,27 @@ async function apiRequest(path, options = {}) {
 
 async function loadRemoteData() {
   if (!session?.token) return;
-  const [customersResult, petsResult] = await Promise.all([
+  const results = await Promise.allSettled([
     apiRequest("/customers"),
-    apiRequest("/pets")
+    apiRequest("/pets"),
+    apiRequest("/appointments"),
+    apiRequest("/records"),
+    apiRequest("/labs"),
+    apiRequest("/lab-requests"),
+    apiRequest("/imaging"),
+    apiRequest("/prescriptions"),
+    apiRequest("/nutrition"),
+    apiRequest("/inventory")
   ]);
-  const remoteCustomers = customersResult.items || [];
-  const remotePets = petsResult.items || [];
+  const [customersResult, petsResult, appointmentsResult, recordsResult, labsResult, labRequestsResult, imagingResult, prescriptionsResult, nutritionResult, inventoryResult] = results;
+  const itemsOf = result => result.status === "fulfilled" ? (result.value.items || []) : [];
+  const remoteCustomers = itemsOf(customersResult);
+  const remotePets = itemsOf(petsResult);
+  remoteData.appointments = itemsOf(appointmentsResult);
+  remoteData.records = itemsOf(recordsResult);
+  remoteData.labs = itemsOf(labsResult);
+  remoteData.labRequests = itemsOf(labRequestsResult);
+  remoteData.loaded = true;
   if (remoteCustomers.length) {
     state.customers = remoteCustomers.map(customer => ({
       ...customer,
@@ -523,6 +555,36 @@ async function loadRemoteData() {
       typeClass: pet.species === "گربه" ? "cat" : pet.species === "خرگوش" ? "rabbit" : "dog"
     }));
   }
+  remoteModuleData = {
+    imaging: itemsOf(imagingResult),
+    prescriptions: itemsOf(prescriptionsResult).map(item => ({
+      ...item,
+      id: String(item.id),
+      petName: item.pet_name,
+      owner: item.owner_name,
+      instructions: item.instructions || [item.dose, item.duration].filter(Boolean).join(" · "),
+      status: item.status || (item.dispensed === "تحویل به مالک" ? "تحویل‌شده" : "در انتظار بررسی")
+    })),
+    nutrition: itemsOf(nutritionResult),
+    inventory: itemsOf(inventoryResult)
+  };
+  if (remoteModuleData.inventory.length) {
+    pharmacyStore.inventory = remoteModuleData.inventory.map(item => ({
+      ...item,
+      name: item.name,
+      category: item.category || "دارو",
+      form: item.medicine_form || "",
+      stock: Number(item.stock) || 0,
+      unit: item.unit || "واحد",
+      reorder: Number(item.reorder) || 0
+    }));
+  }
+  if (remoteModuleData.prescriptions.length) {
+    pharmacyStore.prescriptions = remoteModuleData.prescriptions;
+  }
+  if (state.activeSection === "appointments") renderAppointmentsWorkspace();
+  if (state.activeSection === "laboratory") renderLaboratoryResponseWorkspace();
+  if (state.activeSection === "records") renderExamWorkspace();
 }
 
 function getStored(key, fallback) {
@@ -539,6 +601,13 @@ state.pets = getStored("petclinic-pets", state.pets);
 let session = getStored("petclinic-session", null);
 let clinicalStore = getStored("petclinic-clinical", {});
 let clinicAppointments = getStored("petclinic-appointments", []);
+const remoteData = {
+  appointments: [],
+  records: [],
+  labs: [],
+  labRequests: [],
+  loaded: false
+};
 let pharmacyStore = getStored("petclinic-pharmacy", {
   inventory: [
     { name: "آموکسی‌سیلین", category: "آنتی‌بیوتیک", stock: 24, unit: "بسته", reorder: 8 },
@@ -578,25 +647,108 @@ function getPetClinicalRecord(name) {
   const stored = clinicalStore[name] || {};
   const base = petClinicalData[name] || {};
   const asArray = value => Array.isArray(value) ? value : [];
+  const remoteRecords = remoteData.records
+    .filter(item => item.pet_name === name)
+    .map(item => {
+      let details = {};
+      try { details = typeof item.details_json === "string" ? JSON.parse(item.details_json) : (item.details_json || {}); } catch {}
+      return {
+        id: item.id,
+        date: item.visit_date,
+        diagnosis: item.diagnosis || details.diagnosis || "",
+        complaint: details.complaint || "",
+        finding: details.finding || "",
+        plan: details.plan || "",
+        note: item.notes || details.note || "",
+        treatment: item.treatment || ""
+      };
+    });
+  const remoteLabs = remoteData.labs
+    .filter(item => item.pet_name === name)
+    .map(item => {
+      const result = (() => { try { return typeof item.result_json === "string" ? JSON.parse(item.result_json) : (item.result_json || {}); } catch { return {}; } })();
+      return {
+        id: item.id,
+        name: result.name || item.panel,
+        result: result.result || result.value || "—",
+        unit: result.unit || "",
+        reference: result.reference || "",
+        note: result.note || result.interpretation || "",
+        date: item.created_at || "",
+        status: result.flag === "بحرانی" ? "danger" : result.flag === "طبیعی" ? "success" : "warning"
+      };
+    });
+  const remoteLabRequests = remoteData.labRequests
+    .filter(item => item.pet_name === name)
+    .map(item => ({
+      id: item.id,
+      panel: item.panel,
+      sample: item.sample,
+      priority: item.priority,
+      reason: item.reason,
+      doctor: item.doctor,
+      status: labApiToUiStatus[item.status] || item.status,
+      accessionNumber: item.accession_number,
+      result: (() => { const value = item.result_json; try { const parsed = typeof value === "string" ? JSON.parse(value) : value; return Array.isArray(parsed) ? parsed.map(x => `${x.name}: ${x.result}`).join(" · ") : parsed?.summary || ""; } catch { return ""; } })(),
+      createdAt: item.created_at,
+      completedAt: item.completed_at
+    }));
+  const remoteImaging = remoteModuleData.imaging
+    .filter(item => item.pet_name === name)
+    .map(item => ({
+      id: item.id,
+      type: item.study_type,
+      result: item.report || (item.status || "ثبت‌شده"),
+      date: item.created_at || "",
+      area: item.body_area,
+      fileName: item.file_name,
+      fileType: item.file_type,
+      fileSize: item.file_size,
+      fileData: item.file_data,
+      status: item.status,
+      priority: item.priority,
+      reason: item.reason
+    }));
+  const remotePlans = remoteModuleData.nutrition
+    .filter(item => item.pet_name === name)
+    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+  const remoteMedicines = remoteModuleData.prescriptions
+    .filter(item => item.pet_name === name)
+    .map(item => [item.medicine, item.dose, item.duration, item.dispensed].filter(Boolean).join(" · "));
+  const latestRemotePlan = remotePlans[0];
+  let remoteNutrition = null;
+  if (latestRemotePlan) {
+    let plan = {};
+    try { plan = typeof latestRemotePlan.plan_json === "string" ? JSON.parse(latestRemotePlan.plan_json) : (latestRemotePlan.plan_json || {}); } catch { plan = {}; }
+    remoteNutrition = {
+      title: `جیره ${latestRemotePlan.goal}`,
+      formula: plan.formula || plan.limits || plan.generatedText || "برنامه تغذیه ثبت‌شده",
+      calories: latestRemotePlan.mer || latestRemotePlan.calories ? `${latestRemotePlan.mer || latestRemotePlan.calories} کیلوکالری` : "ثبت نشده",
+      review: latestRemotePlan.status || "پیش‌نویس",
+      planId: latestRemotePlan.id,
+      plan
+    };
+  }
   return {
     ...base,
     ...stored,
     allergies: asArray(stored.allergies).length ? stored.allergies : (asArray(base.allergies).length ? base.allergies : ["حساسیت دارویی ثبت نشده"]),
-    labs: [...asArray(base.labs), ...asArray(stored.labs)],
-    imaging: [...asArray(base.imaging), ...asArray(stored.imaging)],
-    labRequests: asArray(stored.labRequests).length ? stored.labRequests : asArray(base.labRequests),
+    labs: remoteData.loaded ? remoteLabs : [...asArray(base.labs), ...asArray(stored.labs)],
+    imaging: remoteImaging.length ? remoteImaging : [...asArray(base.imaging), ...asArray(stored.imaging)],
+    labRequests: remoteData.loaded ? remoteLabRequests : (asArray(stored.labRequests).length ? stored.labRequests : asArray(base.labRequests)),
     imagingRequests: [...asArray(base.imagingRequests), ...asArray(stored.imagingRequests)],
     followups: [...asArray(base.followups), ...asArray(stored.followups)],
-    visits: [...asArray(base.visits), ...asArray(stored.visits)],
+    visits: remoteData.loaded ? remoteRecords : [...asArray(base.visits), ...asArray(stored.visits)],
     nutrition: {
       title: "جیره ثبت نشده است",
       formula: "برای این پت هنوز جیره‌ای ثبت نشده است.",
       calories: "—",
       review: "در انتظار اطلاعات",
       ...(base.nutrition || {}),
-      ...(stored.nutrition || {})
+      ...(stored.nutrition || {}),
+      ...(remoteNutrition || {})
     },
-    medicines: Array.isArray(stored.medicines) && stored.medicines.length ? stored.medicines : (Array.isArray(base.medicines) && base.medicines.length ? base.medicines : ["داروی جاری ثبت نشده"]),
+    medicines: remoteMedicines.length ? remoteMedicines : (Array.isArray(stored.medicines) && stored.medicines.length ? stored.medicines : (Array.isArray(base.medicines) && base.medicines.length ? base.medicines : ["داروی جاری ثبت نشده"])),
     notes: stored.notes || base.notes || "یادداشت بالینی ثبت نشده است."
   };
 }
@@ -832,9 +984,10 @@ function navigate(section) {
   $$(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.section === section));
   $$(".page-section").forEach(view => view.classList.toggle("active", view.dataset.view === section));
   $("#pageTitle").textContent = sectionNames[section] || "نمای کلی";
-  if (section === "customers") renderCustomers();
-  if (section === "pets") renderPets();
-  if (section === "records") renderExamWorkspace();
+   if (section === "customers") renderCustomers();
+   if (section === "pets") renderPets();
+   if (section === "appointments") renderAppointmentsWorkspace();
+   if (section === "records") renderExamWorkspace();
   if (section === "pharmacy") renderProfessionalPharmacyWorkspace();
   if (section === "nutrition") nutritionSystem.init();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -993,6 +1146,17 @@ function printPharmacyReceipt(orderId) {
   printWindow.document.close();
 }
 
+async function patchPrescriptionRemote(orderId, patch) {
+  const numericId = Number(orderId);
+  if (!Number.isInteger(numericId)) return false;
+  await apiRequest(`/prescriptions/${numericId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch)
+  });
+  await loadRemoteData();
+  return true;
+}
+
 function renderProfessionalPharmacyWorkspace(filter = "", statusFilter = "all") {
   const target = $('.page-section[data-view="pharmacy"]');
   if (!target) return;
@@ -1007,18 +1171,28 @@ function renderProfessionalPharmacyWorkspace(filter = "", statusFilter = "all") 
   target.innerHTML = `<div class="workspace-page pharmacy-page"><div class="page-heading"><div><div class="eyebrow">داروخانه دامپزشکی · صف عملیاتی</div><h1>صف تحویل دارو</h1><p>نسخه‌ها را بررسی، آماده‌سازی، کنترل موجودی و با ثبت مسئول تحویل تکمیل کنید.</p></div><div class="heading-actions"><button type="button" class="button ghost" id="pharmacyPrintAll">🖨 چاپ صف</button><button type="button" class="button primary" data-action="medication">＋ ثبت نسخه جدید</button></div></div><div class="workspace-grid three pharmacy-kpis"><div class="workspace-card accent-card"><span class="workspace-icon orange">⌁</span><small>در انتظار بررسی</small><strong>${count("در انتظار بررسی")}</strong><em>نسخه جدید</em></div><div class="workspace-card accent-card"><span class="workspace-icon purple">◌</span><small>در حال آماده‌سازی</small><strong>${count("در حال آماده‌سازی")}</strong><em>در دست اقدام</em></div><div class="workspace-card accent-card"><span class="workspace-icon teal">✓</span><small>آماده یا تحویل‌شده</small><strong>${count("آماده تحویل") + count("تحویل‌شده")}</strong><em>${lowStock} هشدار موجودی</em></div></div><div class="workspace-card pharmacy-orders"><div class="workspace-toolbar"><div><h2>صف نسخه‌ها</h2><p>هر کارت یک نسخه یا قلم دارویی قابل پیگیری است.</p></div><label class="table-search">⌕ <input id="pharmacySearch" value="${filter}" placeholder="جستجوی شماره نسخه، پت، صاحب یا دارو..." /></label></div><div class="pharmacy-filter-bar">${[["all","همه"],...pharmacyWorkflow.map(item => [item,item])].map(([key,label]) => `<button type="button" class="filter-chip ${statusFilter === key ? "active" : ""}" data-pharmacy-filter="${key}">${label} <b>${key === "all" ? orders.length : count(key)}</b></button>`).join("")}</div><div class="pharmacy-order-list">${orderRows || `<div class="empty-copy">نسخه‌ای با این فیلتر پیدا نشد.</div>`}</div></div><div class="workspace-card pharmacy-inventory"><div class="workspace-toolbar"><div><h2>کنترل موجودی و تأمین</h2><p>موجودی قبل از تحویل بررسی شود؛ اقلام کم‌موجودی نیازمند سفارش هستند.</p></div></div><div class="data-table"><div class="data-row head"><span>دارو</span><span>موجودی</span><span>وضعیت</span></div>${inventoryRows}</div></div></div>`;
   $("#pharmacySearch", target)?.addEventListener("input", event => renderProfessionalPharmacyWorkspace(event.target.value, statusFilter));
   $$("[data-pharmacy-filter]", target).forEach(button => button.addEventListener("click", () => renderProfessionalPharmacyWorkspace($("#pharmacySearch", target)?.value || "", button.dataset.pharmacyFilter)));
-  $$(".pharmacy-next-status", target).forEach(button => button.addEventListener("click", () => {
+  $$(".pharmacy-next-status", target).forEach(button => button.addEventListener("click", async () => {
     const id = decodeURIComponent(button.dataset.pharmacyOrder);
     const order = orders.find(item => item.id === id);
     if (!order) return;
     const next = order.status === "تحویل‌شده" ? "در انتظار بررسی" : pharmacyWorkflow[Math.min(pharmacyWorkflow.indexOf(order.status) + 1, pharmacyWorkflow.length - 1)];
-    pharmacyStore.dispenseStatus[id] = { status: next, staff: session?.role === "vet" ? "دامپزشک ناظر" : "کاربر داروخانه", updatedAt: new Date().toISOString() };
-    localStorage.setItem("petclinic-pharmacy", JSON.stringify(pharmacyStore));
+    const patch = { status: next, dispense_staff: session?.role === "vet" ? "دامپزشک ناظر" : "کاربر داروخانه" };
+    if (next === "تحویل‌شده") patch.dispensed = "تحویل به مالک";
+    try {
+      if (session?.token && /^\d+$/.test(id)) {
+        await patchPrescriptionRemote(id, patch);
+      } else {
+        pharmacyStore.dispenseStatus[id] = { ...patch, updatedAt: new Date().toISOString() };
+        localStorage.setItem("petclinic-pharmacy", JSON.stringify(pharmacyStore));
+      }
+    } catch (error) {
+      return toast(error.message);
+    }
     renderProfessionalPharmacyWorkspace(filter, statusFilter);
     toast(`وضعیت نسخه به «${next}» تغییر کرد.`);
   }));
   $$(".pharmacy-print", target).forEach(button => button.addEventListener("click", () => printPharmacyReceipt(decodeURIComponent(button.dataset.pharmacyPrint))));
-  $$(".pharmacy-detail", target).forEach(button => button.addEventListener("click", () => {
+  $$(".pharmacy-detail", target).forEach(button => button.addEventListener("click", async () => {
     const id = decodeURIComponent(button.dataset.pharmacyDetail);
     const order = orders.find(item => item.id === id);
     if (!order) return;
@@ -1026,8 +1200,21 @@ function renderProfessionalPharmacyWorkspace(filter = "", statusFilter = "all") 
     if (!staff) return;
     const receiver = window.prompt("نام تحویل‌گیرنده / صاحب پت را وارد کنید:", order.owner)?.trim();
     if (!receiver) return;
-    pharmacyStore.dispenseStatus[id] = { status: "تحویل‌شده", staff, receiver, updatedAt: new Date().toISOString() };
-    localStorage.setItem("petclinic-pharmacy", JSON.stringify(pharmacyStore));
+    try {
+      if (session?.token && /^\d+$/.test(id)) {
+        await patchPrescriptionRemote(id, {
+          status: "تحویل‌شده",
+          dispensed: "تحویل به مالک",
+          dispense_staff: staff,
+          dispense_receiver: receiver
+        });
+      } else {
+        pharmacyStore.dispenseStatus[id] = { status: "تحویل‌شده", staff, receiver, updatedAt: new Date().toISOString() };
+        localStorage.setItem("petclinic-pharmacy", JSON.stringify(pharmacyStore));
+      }
+    } catch (error) {
+      return toast(error.message);
+    }
     renderProfessionalPharmacyWorkspace(filter, statusFilter);
     toast("تحویل دارو با نام مسئول و تحویل‌گیرنده ثبت شد.");
   }));
@@ -1036,6 +1223,70 @@ function renderProfessionalPharmacyWorkspace(filter = "", statusFilter = "all") 
 
 function hashCode(value) {
   return String(value).split("").reduce((hash, char) => ((hash << 5) - hash) + char.charCodeAt(0) | 0, 0);
+}
+
+const appointmentStatusLabels = {
+  scheduled: "در انتظار",
+  confirmed: "تأیید شده",
+  in_progress: "در حال ویزیت",
+  completed: "تکمیل شده",
+  cancelled: "لغو شده",
+  no_show: "عدم مراجعه"
+};
+
+function renderAppointmentsWorkspace(filter = "all") {
+  const section = $('.page-section[data-view="appointments"]');
+  if (!section) return;
+  const appointments = remoteData.loaded ? remoteData.appointments : clinicAppointments;
+  const visible = appointments
+    .filter(item => filter === "all" || item.status === filter)
+    .sort((a, b) => String(a.starts_at || a.createdAt || "").localeCompare(String(b.starts_at || b.createdAt || "")));
+  const today = new Date().toISOString().slice(0, 10);
+  const todayCount = appointments.filter(item => String(item.starts_at || "").startsWith(today)).length;
+  const completedCount = appointments.filter(item => item.status === "completed" || item.status === "تکمیل‌شده").length;
+  const waitingCount = appointments.filter(item => item.status === "scheduled" || item.status === "در انتظار").length;
+  const rows = visible.map(item => {
+    const status = item.status || "scheduled";
+    const label = appointmentStatusLabels[status] || status;
+    const date = item.starts_at ? new Date(item.starts_at).toLocaleString("fa-IR", { dateStyle: "short", timeStyle: "short" }) : (item.createdAt || "—");
+    return `<div class="data-row">
+      <b>${escapeHtml(date)}</b>
+      <span>${escapeHtml(item.pet_name || item.petName || item.pet || "—")} · ${escapeHtml(item.customer_name || item.owner || "—")}</span>
+      <span>${escapeHtml(item.service || "—")}</span>
+      <span>${escapeHtml(item.doctor || "—")}</span>
+      <span class="status ${status === "completed" ? "success" : status === "cancelled" ? "danger" : "warning"}">${escapeHtml(label)}</span>
+      <span class="toolbar-actions">
+        ${status !== "completed" && status !== "cancelled" ? `<button type="button" class="button ghost appointment-status-button" data-appointment-id="${item.id}" data-next-status="${status === "scheduled" ? "confirmed" : status === "confirmed" ? "in_progress" : "completed"}">${status === "scheduled" ? "تأیید" : status === "confirmed" ? "شروع ویزیت" : "تکمیل"}</button>` : ""}
+        ${status !== "cancelled" && status !== "completed" ? `<button type="button" class="button ghost appointment-status-button" data-appointment-id="${item.id}" data-next-status="cancelled">لغو</button>` : ""}
+      </span>
+    </div>`;
+  }).join("") || `<div class="empty-copy">نوبتی با این فیلتر پیدا نشد.</div>`;
+  section.innerHTML = `<div class="workspace-page">
+    <div class="page-heading"><div><div class="eyebrow">برنامه‌ریزی کلینیک</div><h1>نوبت‌ها و تقویم پزشکان</h1><p>تمام نوبت‌ها از پایگاه‌داده خوانده و تغییر وضعیت آن‌ها در API ثبت می‌شود.</p></div><button type="button" class="button primary" data-action="appointment">＋ رزرو نوبت جدید</button></div>
+    <div class="workspace-grid three">
+      <div class="workspace-card accent-card"><small>نوبت‌های امروز</small><strong>${toPersianDigits(todayCount)}</strong><em>بر اساس تاریخ سیستم</em></div>
+      <div class="workspace-card accent-card"><small>در انتظار</small><strong>${toPersianDigits(waitingCount)}</strong><em>نیازمند پیگیری پذیرش</em></div>
+      <div class="workspace-card accent-card"><small>تکمیل‌شده</small><strong>${toPersianDigits(completedCount)}</strong><em>ثبت‌شده در پرونده</em></div>
+    </div>
+    <div class="workspace-card"><div class="workspace-toolbar"><div><h2>صف نوبت‌ها</h2><p>${toPersianDigits(appointments.length)} نوبت ثبت‌شده</p></div><div class="toolbar-actions">${["all", "scheduled", "confirmed", "in_progress", "completed", "cancelled"].map(key => `<button type="button" class="filter-chip ${filter === key ? "active" : ""}" data-appointment-filter="${key}">${key === "all" ? "همه" : appointmentStatusLabels[key]}</button>`).join("")}</div></div>
+      <div class="data-table"><div class="data-row head"><span>زمان</span><span>حیوان و صاحب</span><span>خدمت</span><span>پزشک</span><span>وضعیت</span><span>عملیات</span></div>${rows}</div>
+    </div>
+  </div>`;
+  $$("[data-action]", section).forEach(button => button.addEventListener("click", () => openActionModal(button.dataset.action)));
+  $$("[data-appointment-filter]", section).forEach(button => button.addEventListener("click", () => renderAppointmentsWorkspace(button.dataset.appointmentFilter)));
+  $$(".appointment-status-button", section).forEach(button => button.addEventListener("click", () => updateAppointmentStatus(button.dataset.appointmentId, button.dataset.nextStatus)));
+}
+
+async function updateAppointmentStatus(id, status) {
+  if (!session?.token) return toast("برای تغییر وضعیت نوبت باید وارد حساب کاربری شوید.");
+  try {
+    await apiRequest(`/appointments/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status }) });
+    await loadRemoteData();
+    renderAppointmentsWorkspace();
+    toast(`وضعیت نوبت به «${appointmentStatusLabels[status] || status}» تغییر کرد.`);
+  } catch (error) {
+    toast(error.message);
+  }
 }
 
 function renderOperationalSections() {
@@ -1057,7 +1308,7 @@ function renderOperationalSections() {
   };
   Object.entries(content).forEach(([section, html]) => {
     const target = $(`.page-section[data-view="${section}"]`);
-    if (target) target.innerHTML = html;
+    if (target && !(section === "nutrition" && $("#nutritionWorkspace", target))) target.innerHTML = html;
   });
   $$("[data-action]").forEach(button => button.addEventListener("click", () => {
     openActionModal(button.dataset.action);
@@ -1071,7 +1322,28 @@ function renderOperationalSections() {
   }
 }
 
+const labApiToUiStatus = {
+  requested: "Ø¯Ø±Ø®ÙˆØ§Ø³Øªâ€ŒØ´Ø¯Ù‡",
+  sampling: "Ù†Ù…ÙˆÙ†Ù‡â€ŒÚ¯ÛŒØ±ÛŒ",
+  received: "Ù†Ù…ÙˆÙ†Ù‡ Ø¯Ø±ÛŒØ§ÙØª Ø´Ø¯",
+  processing: "Ø¯Ø± Ø­Ø§Ù„ Ø§Ù†Ø¬Ø§Ù…",
+  completed: "Ø§Ù†Ø¬Ø§Ù…â€ŒØ´Ø¯Ù‡"
+};
+const labUiToApiStatus = Object.fromEntries(Object.entries(labApiToUiStatus).map(([key, value]) => [value, key]));
+
 function allLabRequests() {
+  if (remoteData.loaded) {
+    return remoteData.labRequests.map(request => {
+      const pet = state.pets.find(item => item.id === request.pet_id || item.name === request.pet_name);
+      return {
+        ...request,
+        status: labApiToUiStatus[request.status] || request.status,
+        petName: request.pet_name || pet?.name,
+        owner: request.customer_name || pet?.owner,
+        species: pet?.species || ""
+      };
+    });
+  }
   return state.pets.flatMap(pet => getPetClinicalRecord(pet.name).labRequests.map(request => ({ ...request, petName: pet.name, owner: pet.owner, species: pet.species })));
 }
 
@@ -1124,9 +1396,27 @@ function renderLaboratoryResponseWorkspace(selectedPetName = "") {
   $("#printLabButton")?.addEventListener("click", () => printLaboratoryPatient(selected));
 }
 
-function updateLabRequestStatus(petName, index, status) {
+async function updateLabRequestStatus(petName, index, status) {
   const record = getPetClinicalRecord(petName);
   const requests = [...record.labRequests];
+  if (remoteData.loaded && requests[index]?.id && /^\d+$/.test(String(requests[index].id))) {
+    try {
+      await apiRequest(`/lab-requests/${requests[index].id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: labUiToApiStatus[status] || status,
+          accession_number: requests[index].accessionNumber || null,
+          received_at: status === "Ù†Ù…ÙˆÙ†Ù‡ Ø¯Ø±ÛŒØ§ÙØª Ø´Ø¯" ? new Date().toISOString() : null
+        })
+      });
+      await loadRemoteData();
+      renderLaboratoryResponseWorkspace(petName);
+      renderExamWorkspace();
+      return toast(`ÙˆØ¶Ø¹ÛŒØª Ø¢Ø²Ù…Ø§ÛŒØ´ Ø¨Ù‡ Â«${status}Â» ØªØºÛŒÛŒØ± Ú©Ø±Ø¯.`);
+    } catch (error) {
+      return toast(error.message);
+    }
+  }
   if (!requests[index]) return toast("درخواست آزمایش پیدا نشد.");
   requests[index] = {
     ...requests[index],
@@ -1141,11 +1431,14 @@ function updateLabRequestStatus(petName, index, status) {
 }
 
 function openLabAnswerModal(petName, index) {
-  const request = getPetClinicalRecord(petName).labRequests[index];
+  const request = remoteData.loaded
+    ? allLabRequests().filter(item => item.petName === petName)[index]
+    : getPetClinicalRecord(petName).labRequests[index];
   if (!request) return toast("درخواست آزمایش پیدا نشد.");
   openActionModal("lab-answer", petName);
   $("#actionForm").dataset.labPet = petName;
   $("#actionForm").dataset.labIndex = String(index);
+  $("#actionForm").dataset.labRequestId = String(request.id || "");
   $("input[name='answerTest']", $("#actionFields")).value = request.panel || "";
 }
 
@@ -1234,8 +1527,22 @@ function renderImagingWorkspace() {
   const section = $('.page-section[data-view="imaging"]');
   const card = $(".upload-card", section);
   if (!card) return;
-  card.innerHTML = `<div class="upload-icon">⇧</div><h2>آپلود تصویر یا گزارش پزشکی</h2><p>ابتدا پت، نوع تصویربرداری و ناحیه بدن را انتخاب کنید؛ سپس فایل را از رایانه انتخاب و ثبت کنید.</p><div class="upload-steps"><span>۱. انتخاب پت</span><span>۲. انتخاب نوع تصویر</span><span>۳. انتخاب فایل</span></div><button class="button primary" data-action="upload">انتخاب فایل و ثبت در پرونده</button><small class="upload-help">فرمت‌های مجاز: JPG، PNG، WEBP، PDF و DICOM</small>`;
+  card.innerHTML = `<div class="upload-icon">⇧</div><h2>آپلود تصویر یا گزارش پزشکی</h2><p>هر فایل به پرونده پت و رکورد تصویربرداری متصل و در دیتابیس کلینیک ذخیره می‌شود.</p><div class="upload-steps"><span>۱. انتخاب پت</span><span>۲. انتخاب نوع تصویر</span><span>۳. انتخاب فایل</span></div><button class="button primary" data-action="upload">انتخاب فایل و ثبت در پرونده</button><small class="upload-help">فرمت‌های مجاز: JPG، PNG، WEBP، PDF و DICOM · سقف فایل: ۱٫۲ مگابایت</small>`;
   $("[data-action='upload']", card)?.addEventListener("click", () => openActionModal("upload"));
+  const list = $(".study-list", section);
+  if (!list) return;
+  const studies = remoteModuleData.imaging.length
+    ? remoteModuleData.imaging
+    : allKnownPets().flatMap(pet => getPetClinicalRecord(pet.name).imaging.map(item => ({ ...item, pet_name: pet.name })));
+  list.innerHTML = studies.map(item => {
+    const fileHref = String(item.file_data || item.fileData || "").startsWith("data:") ? item.file_data || item.fileData : "";
+    const fileAction = fileHref
+      ? `<a class="button ghost" download="${escapeHtml(item.file_name || item.fileName || "imaging-file")}" href="${fileHref}" target="_blank" rel="noopener">مشاهده فایل</a>`
+      : "";
+    const stateLabel = item.status || (item.report ? "گزارش ثبت‌شده" : "در انتظار گزارش");
+    const stateClass = ["تأییدشده", "تأیید شده", "ثبت‌شده"].includes(stateLabel) ? "success" : "warning";
+    return `<div><div class="study-thumb blue-thumb">◉</div><span><b>${escapeHtml(item.study_type || item.type || "تصویربرداری")} · ${escapeHtml(item.pet_name || item.petName || "پت")}</b><small>${escapeHtml(item.body_area || item.area || "")} · ${escapeHtml(item.created_at || item.date || "امروز")}${item.file_name || item.fileName ? ` · ${escapeHtml(item.file_name || item.fileName)}` : ""}</small></span><em class="status ${stateClass}">${escapeHtml(stateLabel)}</em>${fileAction}</div>`;
+  }).join("") || `<div class="empty-copy">هنوز مطالعه تصویربرداری ثبت نشده است.</div>`;
 }
 
 function getExamOptions(key) {
@@ -1690,6 +1997,7 @@ const conflictDetectionSystem = {
 // Nutrition System Integration
 const nutritionSystem = {
   currentPet: null,
+  initialized: false,
   selectedBCS: 5,
   selectedDiseases: [],
   selectedMedications: [],
@@ -1698,7 +2006,10 @@ const nutritionSystem = {
   
   init: function() {
     this.loadPets();
-    this.setupEventListeners();
+    if (!this.initialized) {
+      this.setupEventListeners();
+      this.initialized = true;
+    }
     this.loadMedications();
     this.loadLabTests();
     this.loadDiseases();
@@ -1757,6 +2068,24 @@ const nutritionSystem = {
       if (lab.name.includes('AST')) this.labResults.ast = lab.result;
     });
     this.renderLabResults();
+
+    const savedPlan = remoteModuleData.nutrition
+      .filter(plan => plan.pet_id === this.currentPet.id || plan.pet_name === this.currentPet.name)
+      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+    if (savedPlan) {
+      this.selectedBCS = Number(savedPlan.bcs) || 5;
+      let plan = {};
+      try { plan = typeof savedPlan.plan_json === "string" ? JSON.parse(savedPlan.plan_json) : (savedPlan.plan_json || {}); } catch { plan = {}; }
+      const parseList = (value, fallback) => {
+        try {
+          const parsed = typeof value === "string" ? JSON.parse(value) : value;
+          return Array.isArray(parsed) ? parsed : fallback;
+        } catch { return fallback; }
+      };
+      this.selectedDiseases = parseList(savedPlan.diseases_json, plan.diseases || this.selectedDiseases);
+      this.selectedIngredients = parseList(savedPlan.ingredients_json, plan.ingredients || []);
+      document.querySelectorAll('input[name="bcs"]').forEach(radio => { radio.checked = Number(radio.value) === this.selectedBCS; });
+    }
     
     // Calculate initial BCS and calories
     this.calculateAll();
@@ -1780,25 +2109,33 @@ const nutritionSystem = {
     });
     
     // Check conflicts
-    document.getElementById('checkConflictsBtn').addEventListener('click', () => {
+    document.getElementById('checkConflictsBtn')?.addEventListener('click', () => {
       this.checkConflicts();
     });
     
     // Generate diet
-    document.getElementById('generateDietBtn').addEventListener('click', () => {
+    document.getElementById('generateDietBtn')?.addEventListener('click', () => {
       this.generateDiet();
     });
     
     // Clear result
-    document.getElementById('clearResultBtn').addEventListener('click', () => {
+    document.getElementById('clearResultBtn')?.addEventListener('click', () => {
       document.getElementById('dietResult').style.display = 'none';
       document.getElementById('dietResult').innerHTML = '';
     });
     
     // Test API
-    document.getElementById('testApiBtn').addEventListener('click', () => {
+    document.getElementById('testApiBtn')?.addEventListener('click', () => {
       this.testAPI();
     });
+    document.getElementById('nutritionNew')?.addEventListener('click', () => {
+      const firstPet = state.pets[0];
+      if (firstPet) {
+        this.selectPet(firstPet.name);
+        document.querySelector(`.pet-selector-item[data-pet="${CSS.escape(firstPet.name)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+    document.getElementById('nutritionExport')?.addEventListener('click', () => this.exportPlan());
   },
   
   loadMedications: function() {
@@ -2051,12 +2388,13 @@ const nutritionSystem = {
     document.getElementById('bcsStatus').textContent = bcsResult.status;
     
     // Calculate water need
-    const waterNeed = bcsSystem.calculateWaterNeed(this.currentPet.weight);
+    const weight = normalizeWeight(this.currentPet.weight);
+    const waterNeed = bcsSystem.calculateWaterNeed(weight);
     document.getElementById('waterNeedValue').textContent = waterNeed;
     
     // Calculate calories
     const calorieResult = bcsSystem.calculateCalories(
-      this.currentPet.weight,
+      weight,
       this.selectedBCS,
       this.currentPet.species,
       'adult', // Default age group
@@ -2077,7 +2415,7 @@ const nutritionSystem = {
       ageYears: 5, // Default assumption
       ageMonths: 0,
       ageGroup: 'adult',
-      weight: this.currentPet.weight,
+      weight: normalizeWeight(this.currentPet.weight),
       bcs: this.selectedBCS,
       neutered: 'no',
       pregnant: 'no',
@@ -2127,7 +2465,7 @@ const nutritionSystem = {
     if (!this.currentPet) return;
     
     const mode = document.querySelector('input[name="genMode"]:checked').value;
-    const apiKey = document.getElementById('apiKeyInput').value;
+    const apiKey = document.getElementById('apiKeyInput')?.value || "";
     const resultContainer = document.getElementById('dietResult');
     
     resultContainer.style.display = 'block';
@@ -2143,6 +2481,7 @@ const nutritionSystem = {
           <button class="button primary" onclick="navigator.clipboard.writeText(document.querySelector('.prompt-box').innerText);alert('کپی شد!')">📋 کپی پرامپت</button>
         </div>
       `;
+      await this.persistPlan(prompt, "پیش‌نویس");
     } else {
       // API integration
       try {
@@ -2176,9 +2515,11 @@ const nutritionSystem = {
         });
         
         const data = await response.json();
+        if (!response.ok) throw new Error(data.error?.message || `خطای سرویس (${response.status})`);
         const aiResponse = data.choices?.[0]?.message?.content || 'پاسخی دریافت نشد';
         
         resultContainer.innerHTML = `<pre>${aiResponse}</pre>`;
+        await this.persistPlan(aiResponse, "پیش‌نویس");
       } catch (error) {
         resultContainer.innerHTML = `
           <div class="conflict-card error-card">
@@ -2194,7 +2535,7 @@ const nutritionSystem = {
   buildPrompt: function() {
     const bcsResult = bcsSystem.calculate(this.selectedBCS);
     const calorieResult = bcsSystem.calculateCalories(
-      this.currentPet.weight,
+      normalizeWeight(this.currentPet.weight),
       this.selectedBCS,
       this.currentPet.species,
       'adult',
@@ -2209,7 +2550,7 @@ const nutritionSystem = {
 📋 اطلاعات پت
 نام: ${this.currentPet.name}
 گونه: ${this.currentPet.species} | نژاد: ${this.currentPet.breed}
-وزن: ${this.currentPet.weight} kg | BCS: ${this.selectedBCS}/9 (${bcsResult.status})
+وزن: ${normalizeWeight(this.currentPet.weight)} kg | BCS: ${this.selectedBCS}/9 (${bcsResult.status})
 
 💊 داروهای مصرفی:
 ${this.selectedMedications.length > 0 ? this.selectedMedications.join(' · ') : 'بدون دارو'}
@@ -2226,7 +2567,7 @@ ${this.selectedIngredients.length > 0 ? this.selectedIngredients.join(' · ') : 
 📊 محاسبات انرژی:
 RER: ${calorieResult.rer} kcal
 MER: ${calorieResult.mer} kcal
-نیاز آبی: ${bcsSystem.calculateWaterNeed(this.currentPet.weight)}
+نیاز آبی: ${bcsSystem.calculateWaterNeed(normalizeWeight(this.currentPet.weight))}
 
 【 دستورالعمل برای هوش مصنوعی 】
 تو یک متخصص تغذیه دامپزشکی فوق‌تخصص هستی. بر اساس اطلاعات داده شده:
@@ -2254,13 +2595,14 @@ MER: ${calorieResult.mer} kcal
   
   testAPI: async function() {
     const mode = document.querySelector('input[name="genMode"]:checked').value;
-    const apiKey = document.getElementById('apiKeyInput').value;
+    const apiKey = document.getElementById('apiKeyInput')?.value || "";
     
     if (!apiKey) {
       alert('لطفاً کلید API را وارد کنید');
       return;
     }
     
+    if (mode === "manual") return alert("در حالت دستی نیازی به تست API نیست.");
     try {
       let apiUrl;
       if (mode === 'deepseek') {
@@ -2282,6 +2624,57 @@ MER: ${calorieResult.mer} kcal
     } catch (error) {
       alert('❌ خطا در اتصال به اینترنت یا API');
     }
+  },
+
+  persistPlan: async function(generatedText, status = "پیش‌نویس") {
+    if (!session?.token || !this.currentPet?.id) return;
+    const weight = normalizeWeight(this.currentPet.weight);
+    const calories = bcsSystem.calculateCalories(weight, this.selectedBCS, this.currentPet.species === "گربه" ? "cat" : "dog", "adult", "no", "no", "no");
+    try {
+      await apiRequest("/nutrition", {
+        method: "POST",
+        body: JSON.stringify({
+          pet_id: this.currentPet.id,
+          goal: this.selectedBCS < 5 ? "افزایش وزن" : this.selectedBCS > 5 ? "کاهش وزن" : "نگهداری",
+          calories: calories.mer,
+          rer: calories.rer,
+          mer: calories.mer,
+          water_ml: weight * 50,
+          species: this.currentPet.species || "",
+          weight,
+          bcs: this.selectedBCS,
+          diseases_json: this.selectedDiseases,
+          medications_json: this.selectedMedications,
+          ingredients_json: this.selectedIngredients,
+          notes: status,
+          plan_json: {
+            generatedText,
+            diseases: this.selectedDiseases,
+            medications: this.selectedMedications,
+            ingredients: this.selectedIngredients,
+            bcs: this.selectedBCS
+          },
+          status
+        })
+      });
+      await loadRemoteData();
+      toast("جیره در پرونده پت ذخیره شد.");
+    } catch (error) {
+      toast(`ذخیره جیره انجام نشد: ${error.message}`);
+    }
+  },
+
+  exportPlan: function() {
+    if (!this.currentPet) return toast("ابتدا یک پت را انتخاب کنید.");
+    const plan = getPetClinicalRecord(this.currentPet.name).nutrition;
+    const text = plan?.plan?.generatedText || plan?.formula || "جیره‌ای ثبت نشده است.";
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `nutrition-${this.currentPet.name}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 };
 
@@ -2400,7 +2793,7 @@ function renderImagingUploadFields() {
 
 function readFileAsDataUrl(file) {
   return new Promise(resolve => {
-    if (!file || file.size > 1200000 || !file.type.startsWith("image/")) return resolve("");
+    if (!file || file.size > 1200000) return resolve("");
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ""));
     reader.onerror = () => resolve("");
@@ -2425,7 +2818,7 @@ function openActionModal(action, contextPetName = "") {
     return `<label>${label}<input name="${name}" type="${type}" required /></label>`;
   }).join("");
   if (action === "lab") renderLaboratoryFields();
-  if (action === "upload") renderImagingUploadFields();
+  if (action === "imaging" || action === "upload") renderImagingUploadFields();
   if (action === "record") renderRecordFields();
   if (action === "lab-request") renderLabRequestFields();
   if (action === "medication") renderMedicationCatalogFields();
@@ -2677,7 +3070,30 @@ $("#actionForm")?.addEventListener("submit", async event => {
   if (action === "lab-request" && !actionDraftItems.labRequest.length) return toast("حداقل یک آزمایش به فهرست اضافه کنید.");
   if (action === "medication" && !actionDraftItems.medication.length) return toast("حداقل یک دارو به فهرست اضافه کنید.");
   if (action === "lab-answer" && !actionDraftItems.labAnswer.length) return toast("حداقل یک شاخص به جواب آزمایش اضافه کنید.");
-  if (session?.token && ["record", "lab", "appointment"].includes(action)) {
+  if (session?.token && action === "lab-answer") {
+    const requestId = event.currentTarget.dataset.labRequestId;
+    if (!requestId || !/^\d+$/.test(requestId)) return toast("شناسه درخواست آزمایش معتبر نیست.");
+    try {
+      await apiRequest(`/lab-requests/${requestId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: "completed",
+          result_json: actionDraftItems.labAnswer,
+          completed_at: new Date().toISOString()
+        })
+      });
+      closeModals();
+      event.currentTarget.reset();
+      actionDraftItems.labAnswer = [];
+      await loadRemoteData();
+      renderLaboratoryResponseWorkspace(event.currentTarget.dataset.labPet || "");
+      renderExamWorkspace();
+      return toast("جواب آزمایش در پایگاه‌داده ثبت و درخواست تکمیل شد.");
+    } catch (error) {
+      return toast(error.message);
+    }
+  }
+  if (session?.token && ["record", "lab", "lab-request", "appointment", "imaging", "imaging-request", "upload", "nutrition", "medication"].includes(action)) {
     const remotePet = state.pets.find(item => item.name === selectedPet);
     const remoteCustomer = state.customers.find(item => item.id === remotePet?.owner_id || item.name === remotePet?.owner);
     if (!remotePet?.id) return toast("حیوان انتخاب‌شده در دیتابیس پیدا نشد.");
@@ -2690,20 +3106,45 @@ $("#actionForm")?.addEventListener("submit", async event => {
             visit_date: new Date().toISOString().slice(0, 10),
             diagnosis: payload.diagnosis || "",
             notes: payload.note || "",
+            details_json: {
+              complaint: payload.complaint || "",
+              finding: payload.finding || "",
+              diagnosis: payload.diagnosis || "",
+              plan: payload.plan || "",
+              note: payload.note || "",
+              followup: payload.followup || ""
+            },
             treatment: payload.followup ? `پیگیری: ${payload.followup}` : ""
           })
         });
+      } else if (action === "lab-request") {
+        const requests = actionDraftItems.labRequest.filter(item => petNameFromValue(item.pet) === selectedPet);
+        if (!requests.length) return toast("حداقل یک آزمایش برای ثبت انتخاب کنید.");
+        for (const item of requests) {
+          await apiRequest("/lab-requests", {
+            method: "POST",
+            body: JSON.stringify({
+              pet_id: remotePet.id,
+              panel: item.panel || item.testKey || "آزمایش جدید",
+              sample: item.sample || "",
+              priority: item.priority || "normal",
+              reason: item.reason || "",
+              doctor: session.name || "",
+              status: "requested"
+            })
+          });
+        }
       } else if (action === "lab") {
         await apiRequest("/labs", {
           method: "POST",
           body: JSON.stringify({
             pet_id: remotePet.id,
             panel: payload.panel || payload.testKey || "آزمایش جدید",
-            results: payload,
+            result_json: payload,
             status: "درخواست‌شده"
           })
         });
-      } else {
+      } else if (action === "appointment") {
         await apiRequest("/appointments", {
           method: "POST",
           body: JSON.stringify({
@@ -2715,10 +3156,84 @@ $("#actionForm")?.addEventListener("submit", async event => {
             status: "در انتظار"
           })
         });
+      } else if (action === "imaging" || action === "upload" || action === "imaging-request") {
+        const file = data.get("file");
+        const fileData = action === "imaging-request" ? "" : await readFileAsDataUrl(file);
+        await apiRequest("/imaging", {
+          method: "POST",
+          body: JSON.stringify({
+            pet_id: remotePet.id,
+            study_type: payload.type || "تصویربرداری",
+            body_area: payload.area || "ثبت نشده",
+            report: payload.report || (action === "imaging-request" ? payload.reason || "" : ""),
+            file_name: file?.name || null,
+            file_type: file?.type || null,
+            file_size: file?.size || 0,
+            file_data: fileData,
+            priority: payload.priority || "عادی",
+            reason: payload.reason || "",
+            status: action === "imaging-request" ? "درخواست‌شده" : "ثبت‌شده"
+          })
+        });
+      } else if (action === "nutrition") {
+        const weight = normalizeWeight(remotePet.weight);
+        const rer = Math.round(70 * Math.pow(weight, 0.75));
+        const bcs = 5;
+        const mer = Math.round(rer * (payload.goal === "کاهش وزن" ? 1.0 : payload.goal === "افزایش وزن" ? 1.4 : 1.2));
+        await apiRequest("/nutrition", {
+          method: "POST",
+          body: JSON.stringify({
+            pet_id: remotePet.id,
+            goal: payload.goal || "نگهداری",
+            calories: mer,
+            rer,
+            mer,
+            water_ml: Math.round(weight * 50),
+            species: remotePet.species || "",
+            weight,
+            bcs,
+            diseases_json: [],
+            medications_json: getPetClinicalRecord(selectedPet).medicines || [],
+            ingredients_json: [],
+            notes: payload.limits || "",
+            plan_json: {
+              budget: payload.budget || "",
+              limits: payload.limits || "",
+              formula: payload.limits || "پس از بررسی دامپزشک تکمیل می‌شود."
+            },
+            status: "پیش‌نویس"
+          })
+        });
+      } else if (action === "medication") {
+        const items = submittedMedicationItems.filter(item => petNameFromValue(item.pet) === selectedPet);
+        if (!items.length) return toast("حداقل یک دارو برای حیوان انتخاب‌شده ثبت کنید.");
+        for (const item of items) {
+          await apiRequest("/prescriptions", {
+            method: "POST",
+            body: JSON.stringify({
+              pet_id: remotePet.id,
+              medicine: item.medicine,
+              medicine_key: item.medicineKey || "custom",
+              category: item.category || "دارو",
+              medicine_form: item.medicineForm || "",
+              dose: item.dose || "",
+              duration: item.duration || "",
+              instructions: [item.dose, item.duration].filter(Boolean).join(" · "),
+              quantity: item.quantity || "1",
+              priority: item.priority || "عادی",
+              dispensed: item.dispensed || "تحویل نشده",
+              status: item.dispensed === "تحویل به مالک" || item.dispensed === "تحویل از داروخانه" ? "تحویل‌شده" : "در انتظار بررسی",
+              note: item.note || ""
+            })
+          });
+        }
       }
       closeModals();
       event.currentTarget.reset();
       await loadRemoteData();
+      renderImagingWorkspace();
+      if (state.activeSection === "pharmacy") renderProfessionalPharmacyWorkspace();
+      if (state.activeSection === "nutrition") nutritionSystem.init();
       toast("اطلاعات با موفقیت در دیتابیس ثبت شد.");
       return;
     } catch (error) {

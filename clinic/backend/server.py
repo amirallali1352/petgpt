@@ -5,7 +5,7 @@ import sqlite3
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 # The original petclinic.db is a legacy export with a different schema.
@@ -20,6 +20,12 @@ def connect():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+def ensure_column(conn, table, column, definition):
+    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def init_db():
@@ -52,10 +58,44 @@ def init_db():
               visit_date TEXT NOT NULL, diagnosis TEXT, treatment TEXT, notes TEXT,
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS lab_requests (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              pet_id INTEGER NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
+              panel TEXT NOT NULL, sample TEXT, priority TEXT NOT NULL DEFAULT 'normal',
+              reason TEXT, doctor TEXT, status TEXT NOT NULL DEFAULT 'requested',
+              accession_number TEXT, result_json TEXT NOT NULL DEFAULT '{}',
+              received_at TEXT, completed_at TEXT,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
             CREATE TABLE IF NOT EXISTS lab_results (
               id INTEGER PRIMARY KEY AUTOINCREMENT, pet_id INTEGER NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
               panel TEXT NOT NULL, result_json TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'ثبت‌شده',
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS imaging_studies (
+              id INTEGER PRIMARY KEY AUTOINCREMENT, pet_id INTEGER NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
+              study_type TEXT NOT NULL, body_area TEXT NOT NULL, report TEXT, file_name TEXT,
+              status TEXT NOT NULL DEFAULT 'ثبت‌شده', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS prescriptions (
+              id INTEGER PRIMARY KEY AUTOINCREMENT, pet_id INTEGER NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
+              medicine TEXT NOT NULL, dose TEXT, duration TEXT, instructions TEXT, dispensed TEXT NOT NULL DEFAULT 'تحویل نشده',
+              note TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS nutrition_plans (
+              id INTEGER PRIMARY KEY AUTOINCREMENT, pet_id INTEGER NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
+              goal TEXT NOT NULL, calories REAL, plan_json TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'پیش‌نویس',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS pharmacy_inventory (
+              id INTEGER PRIMARY KEY AUTOINCREMENT, medicine_key TEXT UNIQUE, name TEXT NOT NULL,
+              category TEXT, medicine_form TEXT, stock REAL NOT NULL DEFAULT 0,
+              unit TEXT NOT NULL DEFAULT 'واحد', reorder REAL NOT NULL DEFAULT 0,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS clinic_settings (
+              id INTEGER PRIMARY KEY CHECK(id=1), clinic_name TEXT, phone TEXT, address TEXT,
+              settings_json TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS audit_log (
               id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT, action TEXT NOT NULL,
@@ -63,6 +103,56 @@ def init_db():
             );
             """
         )
+        for table, column, definition in [
+            ("imaging_studies", "file_data", "TEXT"),
+            ("imaging_studies", "file_type", "TEXT"),
+            ("imaging_studies", "file_size", "INTEGER"),
+            ("imaging_studies", "priority", "TEXT"),
+            ("imaging_studies", "reason", "TEXT"),
+            ("prescriptions", "status", "TEXT NOT NULL DEFAULT 'در انتظار بررسی'"),
+            ("prescriptions", "priority", "TEXT"),
+            ("prescriptions", "quantity", "TEXT"),
+            ("prescriptions", "medicine_key", "TEXT"),
+            ("prescriptions", "category", "TEXT"),
+            ("prescriptions", "medicine_form", "TEXT"),
+            ("prescriptions", "dispense_staff", "TEXT"),
+            ("prescriptions", "dispense_receiver", "TEXT"),
+            ("prescriptions", "dispensed_at", "TEXT"),
+            ("prescriptions", "dispensed_quantity", "REAL NOT NULL DEFAULT 0"),
+            ("nutrition_plans", "bcs", "INTEGER"),
+            ("nutrition_plans", "rer", "REAL"),
+            ("nutrition_plans", "mer", "REAL"),
+            ("nutrition_plans", "water_ml", "REAL"),
+            ("nutrition_plans", "species", "TEXT"),
+            ("nutrition_plans", "weight", "REAL"),
+            ("nutrition_plans", "diseases_json", "TEXT"),
+            ("nutrition_plans", "medications_json", "TEXT"),
+            ("nutrition_plans", "ingredients_json", "TEXT"),
+            ("nutrition_plans", "notes", "TEXT"),
+            ("records", "details_json", "TEXT NOT NULL DEFAULT '{}'"),
+            ("lab_results", "request_id", "INTEGER"),
+            ("lab_requests", "doctor", "TEXT"),
+            ("lab_requests", "accession_number", "TEXT"),
+            ("lab_requests", "result_json", "TEXT NOT NULL DEFAULT '{}'"),
+            ("lab_requests", "received_at", "TEXT"),
+            ("lab_requests", "completed_at", "TEXT"),
+        ]:
+            ensure_column(conn, table, column, definition)
+        conn.execute(
+            "UPDATE prescriptions SET status=CASE WHEN dispensed='تحویل به مالک' OR dispensed='تحویل از داروخانه' "
+            "THEN 'تحویل‌شده' ELSE COALESCE(status, 'در انتظار بررسی') END WHERE status IS NULL OR status=''"
+        )
+        if conn.execute("SELECT COUNT(*) FROM pharmacy_inventory").fetchone()[0] == 0:
+            conn.executemany(
+                "INSERT INTO pharmacy_inventory(medicine_key,name,category,medicine_form,stock,unit,reorder) VALUES (?,?,?,?,?,?,?)",
+                [
+                    ("amoxicillin", "آموکسی‌سیلین", "آنتی‌بیوتیک", "قرص", 24, "بسته", 8),
+                    ("meloxicam", "ملوکسیکام", "ضددرد و ضدالتهاب", "قرص", 16, "بسته", 5),
+                    ("fenbendazole", "فنبندازول", "ضدانگل", "قرص", 12, "بسته", 4),
+                    ("omeprazole", "امپرازول", "گوارشی", "کپسول", 9, "بسته", 3),
+                    ("joint-supplement", "مکمل مفاصل", "مکمل", "پودر", 18, "بسته", 6),
+                ],
+            )
         if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
             digest = hashlib.sha256(b"123456").hexdigest()
             conn.executemany(
@@ -87,7 +177,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1:8000")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
         self.end_headers()
         self.wfile.write(data)
 
@@ -95,7 +185,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1:8000")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
         self.end_headers()
 
     def body(self):
@@ -118,8 +208,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {"ok": True, "service": "petclinic-api"})
         if not path.startswith("/api/"):
             return self.static(path)
-        if not self.user():
+        actor = self.user()
+        if not actor:
             return
+        if actor["role"] == "customer":
+            return self.send_json(403, {"error": "دسترسی کارکنان برای مشتری مجاز نیست"})
         queries = {
             "/api/customers": "SELECT * FROM customers ORDER BY id DESC",
             "/api/pets": """SELECT p.*, c.name owner_name FROM pets p JOIN customers c ON c.id=p.owner_id ORDER BY p.id DESC""",
@@ -127,13 +220,41 @@ class Handler(BaseHTTPRequestHandler):
                                   LEFT JOIN pets p ON p.id=a.pet_id LEFT JOIN customers c ON c.id=a.customer_id
                                   ORDER BY starts_at DESC""",
             "/api/records": "SELECT r.*, p.name pet_name FROM records r JOIN pets p ON p.id=r.pet_id ORDER BY visit_date DESC",
+            "/api/lab-requests": """SELECT r.*, p.name pet_name, c.name customer_name
+                                   FROM lab_requests r
+                                   JOIN pets p ON p.id=r.pet_id
+                                   LEFT JOIN customers c ON c.id=p.owner_id
+                                   ORDER BY r.id DESC""",
             "/api/labs": "SELECT l.*, p.name pet_name FROM lab_results l JOIN pets p ON p.id=l.pet_id ORDER BY l.id DESC",
+            "/api/imaging": "SELECT i.*, p.name pet_name, c.name owner_name FROM imaging_studies i JOIN pets p ON p.id=i.pet_id JOIN customers c ON c.id=p.owner_id ORDER BY i.id DESC",
+            "/api/prescriptions": "SELECT x.*, p.name pet_name, c.name owner_name FROM prescriptions x JOIN pets p ON p.id=x.pet_id JOIN customers c ON c.id=p.owner_id ORDER BY x.id DESC",
+            "/api/nutrition": "SELECT n.*, p.name pet_name FROM nutrition_plans n JOIN pets p ON p.id=n.pet_id ORDER BY n.id DESC",
+            "/api/inventory": "SELECT * FROM pharmacy_inventory ORDER BY name COLLATE NOCASE",
+            "/api/settings": "SELECT * FROM clinic_settings WHERE id=1",
         }
         sql = queries.get(path)
         if not sql:
             return self.send_json(404, {"error": "مسیر پیدا نشد"})
+        query = parse_qs(urlparse(self.path).query)
+        pet_id = query.get("pet_id", [None])[0]
+        status = query.get("status", [None])[0]
+        if pet_id or status:
+            clauses = []
+            if pet_id:
+                clauses.append("pet_id=?")
+            if status and path in {"/api/appointments", "/api/lab-requests"}:
+                clauses.append("status=?")
+            if clauses:
+                values = ([pet_id] if pet_id else []) + ([status] if status and path in {"/api/appointments", "/api/lab-requests"} else [])
+                order_index = sql.upper().rfind(" ORDER BY ")
+                order = sql[order_index:] if order_index >= 0 else ""
+                sql = (sql[:order_index] if order_index >= 0 else sql) + " WHERE " + " AND ".join(clauses) + order
+            else:
+                values = []
+        else:
+            values = []
         with connect() as conn:
-            return self.send_json(200, {"items": [as_dict(r) for r in conn.execute(sql)]})
+            return self.send_json(200, {"items": [as_dict(r) for r in conn.execute(sql, values)]})
 
     def do_POST(self):
         path = urlparse(self.path).path
@@ -155,12 +276,77 @@ class Handler(BaseHTTPRequestHandler):
         actor = self.user()
         if not actor:
             return
+        if actor["role"] == "customer":
+            return self.send_json(403, {"error": "مشتری اجازه ثبت یا تغییر اطلاعات کلینیک را ندارد"})
+        if path == "/api/settings":
+            allowed = {"clinic_name", "phone", "address", "settings_json"}
+            values = {key: payload[key] for key in payload if key in allowed}
+            if "settings_json" in values and not isinstance(values["settings_json"], str):
+                values["settings_json"] = json.dumps(values["settings_json"], ensure_ascii=False)
+            if not values:
+                return self.send_json(400, {"error": "تنظیماتی برای ذخیره ارسال نشده است"})
+            with connect() as conn:
+                existing = conn.execute("SELECT id FROM clinic_settings WHERE id=1").fetchone()
+                if existing:
+                    conn.execute(
+                        f"UPDATE clinic_settings SET {','.join(k + '=?' for k in values)}, updated_at=CURRENT_TIMESTAMP WHERE id=1",
+                        list(values.values()),
+                    )
+                else:
+                    values.setdefault("clinic_name", "کلینیک دامپزشکی")
+                    values.setdefault("phone", "")
+                    values.setdefault("address", "")
+                    values.setdefault("settings_json", "{}")
+                    conn.execute("INSERT INTO clinic_settings(id,clinic_name,phone,address,settings_json) VALUES (?,?,?,?,?)",
+                                 (1, values["clinic_name"], values["phone"], values["address"], values["settings_json"]))
+                row = conn.execute("SELECT * FROM clinic_settings WHERE id=1").fetchone()
+            return self.send_json(200, {"item": as_dict(row)})
+        if path == "/api/reports":
+            with connect() as conn:
+                report = {
+                    "customers": conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0],
+                    "pets": conn.execute("SELECT COUNT(*) FROM pets").fetchone()[0],
+                    "appointments": conn.execute("SELECT COUNT(*) FROM appointments").fetchone()[0],
+                    "records": conn.execute("SELECT COUNT(*) FROM records").fetchone()[0],
+                    "labs": conn.execute("SELECT COUNT(*) FROM lab_results").fetchone()[0],
+                    "prescriptions": conn.execute("SELECT COUNT(*) FROM prescriptions").fetchone()[0],
+                    "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "type": payload.get("type", "عملیاتی"),
+                }
+            return self.send_json(200, {"report": report})
+        if path == "/api/lab-requests":
+            required = ("pet_id", "panel")
+            missing = [field for field in required if payload.get(field) in (None, "")]
+            if missing:
+                return self.send_json(400, {"error": "required fields: " + ", ".join(missing)})
+            fields = ["pet_id", "panel", "sample", "priority", "reason", "doctor", "status", "accession_number", "result_json"]
+            with connect() as conn:
+                if not conn.execute("SELECT 1 FROM pets WHERE id=?", (payload["pet_id"],)).fetchone():
+                    return self.send_json(400, {"error": "selected pet was not found"})
+                values = [payload.get(field) for field in fields]
+                values[3] = values[3] or "normal"
+                if not isinstance(values[-1], str):
+                    values[-1] = json.dumps(values[-1] or {}, ensure_ascii=False)
+                values[6] = values[6] or "requested"
+                cur = conn.execute(
+                    f"INSERT INTO lab_requests({','.join(fields)}) VALUES ({','.join('?' for _ in fields)})",
+                    values,
+                )
+                conn.execute("INSERT INTO audit_log(actor,action,entity,entity_id) VALUES (?,?,?,?)",
+                             (actor["name"], "create", "lab_requests", cur.lastrowid))
+                row = conn.execute("SELECT * FROM lab_requests WHERE id=?", (cur.lastrowid,)).fetchone()
+            return self.send_json(201, {"item": as_dict(row)})
         specs = {
             "/api/customers": ("customers", ("name", "phone"), ("name", "phone", "email")),
             "/api/pets": ("pets", ("owner_id", "name", "species"), ("owner_id", "name", "species", "breed", "age", "weight", "status", "note")),
             "/api/appointments": ("appointments", ("starts_at", "service"), ("pet_id", "customer_id", "starts_at", "service", "doctor", "status", "note")),
-            "/api/records": ("records", ("pet_id", "visit_date"), ("pet_id", "visit_date", "diagnosis", "treatment", "notes")),
+            "/api/records": ("records", ("pet_id", "visit_date"), ("pet_id", "visit_date", "diagnosis", "treatment", "notes", "details_json")),
             "/api/labs": ("lab_results", ("pet_id", "panel"), ("pet_id", "panel", "result_json", "status")),
+            "/api/lab-requests": ("lab_requests", ("pet_id", "panel"), ("pet_id", "panel", "sample", "priority", "reason", "status")),
+            "/api/imaging": ("imaging_studies", ("pet_id", "study_type", "body_area"), ("pet_id", "study_type", "body_area", "report", "file_name", "file_type", "file_size", "file_data", "priority", "reason", "status")),
+            "/api/prescriptions": ("prescriptions", ("pet_id", "medicine"), ("pet_id", "medicine", "medicine_key", "category", "medicine_form", "dose", "duration", "instructions", "quantity", "priority", "dispensed", "status", "note")),
+            "/api/nutrition": ("nutrition_plans", ("pet_id", "goal", "plan_json"), ("pet_id", "goal", "calories", "plan_json", "status", "bcs", "rer", "mer", "water_ml", "species", "weight", "diseases_json", "medications_json", "ingredients_json", "notes")),
+            "/api/inventory": ("pharmacy_inventory", ("name", "unit"), ("medicine_key", "name", "category", "medicine_form", "stock", "unit", "reorder")),
         }
         spec = specs.get(path)
         if not spec:
@@ -174,20 +360,227 @@ class Handler(BaseHTTPRequestHandler):
                 exists = conn.execute("SELECT 1 FROM pets WHERE id=?", (payload["pet_id"],)).fetchone()
             if not exists:
                 return self.send_json(400, {"error": "حیوان انتخاب‌شده پیدا نشد"})
+        insert_fields = [field for field in fields if field in payload and payload[field] not in (None, "")]
         values = []
-        for field in fields:
+        for field in insert_fields:
             value = payload.get(field)
-            if field == "result_json" and not isinstance(value, str):
+            if field.endswith("_json") and not isinstance(value, str):
                 value = json.dumps(value or {}, ensure_ascii=False)
+            if table == "appointments" and field == "status":
+                value = {
+                    "Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø±": "scheduled",
+                    "ØªØ£ÛŒÛŒØ¯ Ø´Ø¯Ù‡": "confirmed",
+                    "Ø¯Ø± Ø­Ø§Ù„ ÙˆÛŒØ²ÛŒØª": "in_progress",
+                    "ØªÚ©Ù…ÛŒÙ„ Ø´Ø¯Ù‡": "completed",
+                    "Ù„ØºÙˆ Ø´Ø¯Ù‡": "cancelled",
+                }.get(value, value)
+            if field in {"file_data", "plan_json"} and isinstance(value, str) and len(value) > 1_800_000:
+                return self.send_json(413, {"error": "حجم داده فایل یا جیره بیش از حد مجاز است"})
             values.append(value)
         with connect() as conn:
-            columns = ",".join(fields)
-            placeholders = ",".join("?" for _ in fields)
+            columns = ",".join(insert_fields)
+            placeholders = ",".join("?" for _ in insert_fields)
             cur = conn.execute(f"INSERT INTO {table}({columns}) VALUES ({placeholders})", values)
             conn.execute("INSERT INTO audit_log(actor,action,entity,entity_id) VALUES (?,?,?,?)",
                          (actor["name"], "create", table, cur.lastrowid))
             row = conn.execute(f"SELECT * FROM {table} WHERE id=?", (cur.lastrowid,)).fetchone()
         return self.send_json(201, {"item": as_dict(row)})
+
+    def do_PATCH(self):
+        path = urlparse(self.path).path
+        actor = self.user()
+        if not actor:
+            return
+        try:
+            payload = self.body()
+            resource, raw_id = path.rsplit("/", 1)
+            record_id = int(raw_id)
+        except (ValueError, json.JSONDecodeError):
+            return self.send_json(400, {"error": "درخواست نامعتبر است"})
+        if resource == "/api/lab-requests":
+            allowed = {"panel", "sample", "priority", "reason", "doctor", "status", "accession_number", "result_json", "received_at", "completed_at"}
+            if payload.get("status") not in (None, "requested", "sampling", "received", "processing", "completed", "cancelled"):
+                return self.send_json(400, {"error": "invalid laboratory request status"})
+            with connect() as conn:
+                current = conn.execute("SELECT * FROM lab_requests WHERE id=?", (record_id,)).fetchone()
+            if not current:
+                return self.send_json(404, {"error": "record not found"})
+            if payload.get("status") in {"received", "processing", "completed"}:
+                payload.setdefault("accession_number", current["accession_number"] or f"LAB-{int(time.time() * 1000) % 1000000:06d}")
+            if payload.get("status") == "received":
+                payload.setdefault("received_at", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+            if payload.get("status") == "completed":
+                payload.setdefault("completed_at", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+            fields = [field for field in payload if field in allowed]
+            if not fields:
+                return self.send_json(400, {"error": "no editable fields supplied"})
+            with connect() as conn:
+                current = conn.execute("SELECT * FROM lab_requests WHERE id=?", (record_id,)).fetchone()
+                values = []
+                for field in fields:
+                    value = payload[field]
+                    if field == "result_json" and not isinstance(value, str):
+                        value = json.dumps(value or [], ensure_ascii=False)
+                    values.append(value)
+                conn.execute(f"UPDATE lab_requests SET {','.join(field + '=?' for field in fields)} WHERE id=?",
+                             values + [record_id])
+                if payload.get("status") == "completed" and payload.get("result_json") is not None:
+                    result_json = payload["result_json"] if isinstance(payload["result_json"], str) else json.dumps(payload["result_json"], ensure_ascii=False)
+                    existing_result = conn.execute("SELECT id FROM lab_results WHERE request_id=? ORDER BY id DESC LIMIT 1", (record_id,)).fetchone()
+                    if existing_result:
+                        conn.execute("UPDATE lab_results SET panel=?, result_json=?, status=? WHERE id=?",
+                                     (payload.get("panel", current["panel"]), result_json, "completed", existing_result["id"]))
+                    else:
+                        conn.execute(
+                            "INSERT INTO lab_results(request_id,pet_id,panel,result_json,status) VALUES (?,?,?,?,?)",
+                            (record_id, current["pet_id"], payload.get("panel", current["panel"]), result_json, "completed"),
+                        )
+                conn.execute("INSERT INTO audit_log(actor,action,entity,entity_id) VALUES (?,?,?,?)",
+                             (actor["name"], "update", "lab_requests", record_id))
+                row = conn.execute("SELECT * FROM lab_requests WHERE id=?", (record_id,)).fetchone()
+            return self.send_json(200, {"item": as_dict(row)})
+        table = {"customers": "customers", "pets": "pets", "appointments": "appointments",
+                 "records": "records", "lab-requests": "lab_requests", "labs": "lab_results", "imaging": "imaging_studies",
+                 "prescriptions": "prescriptions", "nutrition": "nutrition_plans",
+                 "inventory": "pharmacy_inventory"}.get(resource.rsplit("/", 1)[-1])
+        if not table:
+            return self.send_json(404, {"error": "مسیر پیدا نشد"})
+        allowed = {
+            "customers": {"name", "phone", "email"}, "pets": {"owner_id", "name", "species", "breed", "age", "weight", "status", "note"},
+            "appointments": {"pet_id", "customer_id", "starts_at", "service", "doctor", "status", "note"},
+                  "records": {"visit_date", "diagnosis", "treatment", "notes", "details_json"}, "lab_results": {"request_id", "panel", "result_json", "status"},
+            "imaging_studies": {"study_type", "body_area", "report", "file_name", "file_type", "file_size", "file_data", "priority", "reason", "status"},
+            "prescriptions": {"medicine", "medicine_key", "category", "medicine_form", "dose", "duration", "instructions", "quantity", "priority", "dispensed", "status", "note", "dispense_staff", "dispense_receiver", "dispensed_at"},
+            "nutrition_plans": {"goal", "calories", "plan_json", "status", "bcs", "rer", "mer", "water_ml", "species", "weight", "diseases_json", "medications_json", "ingredients_json", "notes"},
+            "pharmacy_inventory": {"medicine_key", "name", "category", "medicine_form", "stock", "unit", "reorder"},
+        }[table]
+        fields = [field for field in payload if field in allowed]
+        if not fields:
+            return self.send_json(400, {"error": "فیلد قابل ویرایش وجود ندارد"})
+        values = []
+        for field in fields:
+            value = payload[field]
+            if field.endswith("_json") and not isinstance(value, str):
+                value = json.dumps(value or {}, ensure_ascii=False)
+            if field in {"file_data", "plan_json"} and isinstance(value, str) and len(value) > 1_800_000:
+                return self.send_json(413, {"error": "حجم داده فایل یا جیره بیش از حد مجاز است"})
+            values.append(value)
+        with connect() as conn:
+            current = conn.execute(f"SELECT * FROM {table} WHERE id=?", (record_id,)).fetchone()
+            if not current:
+                return self.send_json(404, {"error": "رکورد پیدا نشد"})
+            if table == "prescriptions" and ("status" in payload or "dispensed" in payload):
+                return self.update_prescription(conn, actor, record_id, current, payload)
+            conn.execute(f"UPDATE {table} SET {','.join(field + '=?' for field in fields)} WHERE id=?", values + [record_id])
+            conn.execute("INSERT INTO audit_log(actor,action,entity,entity_id) VALUES (?,?,?,?)",
+                         (actor["name"], "update", table, record_id))
+            row = conn.execute(f"SELECT * FROM {table} WHERE id=?", (record_id,)).fetchone()
+        return self.send_json(200, {"item": as_dict(row)})
+
+    do_PUT = do_PATCH
+
+    def update_prescription(self, conn, actor, record_id, current, payload):
+        raw_status = payload.get("status") or current["status"] or "در انتظار بررسی"
+        status_aliases = {
+            "درانتظاربررسی": "در انتظار بررسی",
+            "درحال آمادهسازی": "در حال آماده‌سازی",
+            "درحالآمادهسازی": "در حال آماده‌سازی",
+            "آمادهتحویل": "آماده تحویل",
+            "تحویلشده": "تحویل‌شده",
+        }
+        next_status = status_aliases.get(str(raw_status).replace("\u200c", "").replace(" ", ""), raw_status)
+        if payload.get("dispensed") in {"تحویل به مالک", "تحویل از داروخانه"}:
+            next_status = "تحویل‌شده"
+        if next_status not in {"در انتظار بررسی", "در حال آماده‌سازی", "آماده تحویل", "تحویل‌شده"}:
+            return self.send_json(400, {"error": "وضعیت نسخه معتبر نیست"})
+        fields = [field for field in payload if field in {
+            "medicine", "medicine_key", "category", "medicine_form", "dose", "duration",
+            "instructions", "quantity", "priority", "dispensed", "status", "note",
+            "dispense_staff", "dispense_receiver", "dispensed_at"
+        }]
+        values = [payload[field] for field in fields]
+        old_status = current["status"] or "در انتظار بررسی"
+        old_qty = float(current["dispensed_quantity"] or 0)
+        new_qty = old_qty
+        if old_status != "تحویل‌شده" and next_status == "تحویل‌شده":
+            requested_qty = payload.get(
+                "dispensed_quantity",
+                payload.get("quantity", current["quantity"] or 1),
+            )
+            try:
+                requested_qty = float(str(requested_qty).replace(",", ".").split()[0])
+            except (TypeError, ValueError):
+                requested_qty = 1
+            requested_qty = max(requested_qty, 1)
+            inventory = conn.execute(
+                "SELECT * FROM pharmacy_inventory WHERE medicine_key=? OR lower(name)=lower(?) LIMIT 1",
+                (current["medicine_key"], current["medicine"]),
+            ).fetchone()
+            if inventory and float(inventory["stock"]) < requested_qty:
+                return self.send_json(409, {"error": f"موجودی {inventory['name']} برای تحویل کافی نیست"})
+            if inventory:
+                conn.execute(
+                    "UPDATE pharmacy_inventory SET stock=stock-?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                    (requested_qty, inventory["id"]),
+                )
+            new_qty = requested_qty
+            if "dispensed" not in payload:
+                fields.append("dispensed")
+                values.append("تحویل به مالک")
+            if "dispensed_at" not in payload:
+                fields.append("dispensed_at")
+                values.append(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+        elif old_status == "تحویل‌شده" and next_status != "تحویل‌شده" and old_qty:
+            inventory = conn.execute(
+                "SELECT * FROM pharmacy_inventory WHERE medicine_key=? OR lower(name)=lower(?) LIMIT 1",
+                (current["medicine_key"], current["medicine"]),
+            ).fetchone()
+            if inventory:
+                conn.execute(
+                    "UPDATE pharmacy_inventory SET stock=stock+?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                    (old_qty, inventory["id"]),
+                )
+            new_qty = 0
+            fields.extend(["dispensed_quantity", "dispensed_at"])
+            values.extend([0, None])
+        if "status" not in fields:
+            fields.append("status")
+            values.append(next_status)
+        if "dispensed_quantity" not in fields:
+            fields.append("dispensed_quantity")
+            values.append(new_qty)
+        if "dispensed" not in fields and next_status != "تحویل‌شده":
+            fields.append("dispensed")
+            values.append("تحویل نشده")
+        conn.execute(f"UPDATE prescriptions SET {','.join(field + '=?' for field in fields)} WHERE id=?",
+                     values + [record_id])
+        conn.execute("INSERT INTO audit_log(actor,action,entity,entity_id) VALUES (?,?,?,?)",
+                     (actor["name"], "update", "prescriptions", record_id))
+        row = conn.execute("SELECT * FROM prescriptions WHERE id=?", (record_id,)).fetchone()
+        return self.send_json(200, {"item": as_dict(row)})
+
+    def do_DELETE(self):
+        path = urlparse(self.path).path
+        if not self.user():
+            return
+        try:
+            resource, raw_id = path.rsplit("/", 1)
+            record_id = int(raw_id)
+        except ValueError:
+            return self.send_json(400, {"error": "شناسه نامعتبر است"})
+        table = {"customers": "customers", "pets": "pets", "appointments": "appointments",
+                 "records": "records", "labs": "lab_results", "imaging": "imaging_studies",
+                 "prescriptions": "prescriptions", "nutrition": "nutrition_plans",
+                 "inventory": "pharmacy_inventory"}.get(resource.rsplit("/", 1)[-1])
+        if not table:
+            return self.send_json(404, {"error": "مسیر پیدا نشد"})
+        with connect() as conn:
+            cur = conn.execute(f"DELETE FROM {table} WHERE id=?", (record_id,))
+            if not cur.rowcount:
+                return self.send_json(404, {"error": "رکورد پیدا نشد"})
+            conn.execute("INSERT INTO audit_log(actor,action,entity,entity_id) VALUES (?,?,?,?)",
+                         (self.headers.get("Authorization", "")[:32], "delete", table, record_id))
+        return self.send_json(200, {"deleted": record_id})
 
     def static(self, path):
         relative = path.lstrip("/") or "index.html"
