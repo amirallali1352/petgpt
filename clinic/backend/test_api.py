@@ -171,6 +171,142 @@ class PetClinicApiTests(unittest.TestCase):
         vet_token = self.login("vet@petclinic.local")
         self.assertNotEqual(admin_token, vet_token)
 
+    def test_pet_shop_seller_can_authenticate(self) -> None:
+        status, body, _ = self.client.request(
+            "POST",
+            "/api/auth/login",
+            payload={
+                "email": "shopkeeper@petclinic.local",
+                "password": "123456",
+            },
+        )
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["user"]["role"], "shop_seller")
+        self.assertIn("token", body)
+
+    def test_pet_shop_product_inventory_and_sale_flow(self) -> None:
+        token = self.login("shopkeeper@petclinic.local")
+
+        status, body, _ = self.client.request(
+            "POST",
+            "/api/shop/products",
+            token=token,
+            payload={
+                "sku": "FOOD-001",
+                "barcode": "6260000000012",
+                "name": "غذای خشک گربه",
+                "category": "غذا",
+                "brand": "Test Brand",
+                "purchase_price": 350000,
+                "sale_price": 490000,
+                "unit": "بسته",
+                "reorder_level": 3,
+            },
+        )
+        self.assertEqual(status, 201, body)
+        product = body["item"]
+        product_id = product["id"]
+        self.assertEqual(product["barcode"], "6260000000012")
+        self.assertEqual(product["stock"], 0)
+
+        status, body, _ = self.client.request(
+            "POST",
+            "/api/shop/stock-movements",
+            token=token,
+            payload={
+                "product_id": product_id,
+                "movement_type": "purchase",
+                "quantity": 10,
+                "unit_cost": 350000,
+                "reference": "PO-001",
+            },
+        )
+        self.assertEqual(status, 201, body)
+        self.assertEqual(body["item"]["stock_after"], 10)
+
+        status, body, _ = self.client.request(
+            "POST",
+            "/api/shop/sales",
+            token=token,
+            payload={
+                "customer_name": "مشتری پت‌شاپ",
+                "payment_method": "card",
+                "discount": 20000,
+                "tax_percent": 10,
+                "items": [
+                    {"product_id": product_id, "quantity": 2},
+                ],
+            },
+        )
+        self.assertEqual(status, 201, body)
+        sale = body["item"]
+        self.assertTrue(sale["invoice_number"].startswith("PS-"))
+        self.assertEqual(sale["subtotal"], 980000)
+        self.assertEqual(sale["discount"], 20000)
+        self.assertEqual(sale["tax"], 96000)
+        self.assertEqual(sale["total"], 1056000)
+        self.assertEqual(sale["items"][0]["unit_price"], 490000)
+        self.assertEqual(sale["items"][0]["profit"], 280000)
+
+        status, body, _ = self.client.request(
+            "GET", "/api/shop/products?barcode=6260000000012", token=token
+        )
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["items"][0]["stock"], 8)
+
+        status, body, _ = self.client.request(
+            "GET", "/api/shop/reports/summary", token=token
+        )
+        self.assertEqual(status, 200, body)
+        self.assertGreaterEqual(body["report"]["sales_count"], 1)
+        self.assertGreaterEqual(body["report"]["revenue"], 1056000)
+        self.assertGreaterEqual(body["report"]["profit"], 280000)
+
+    def test_pet_shop_prevents_overselling_and_duplicate_barcode(self) -> None:
+        token = self.login("admin@petclinic.local")
+        product_payload = {
+            "sku": "TOY-001",
+            "barcode": "6260000000099",
+            "name": "اسباب‌بازی تست",
+            "category": "اسباب‌بازی",
+            "purchase_price": 100000,
+            "sale_price": 150000,
+            "unit": "عدد",
+        }
+        status, first, _ = self.client.request(
+            "POST", "/api/shop/products", token=token, payload=product_payload
+        )
+        self.assertEqual(status, 201, first)
+        status, duplicate, _ = self.client.request(
+            "POST",
+            "/api/shop/products",
+            token=token,
+            payload={**product_payload, "sku": "TOY-002"},
+        )
+        self.assertEqual(status, 409, duplicate)
+
+        status, sale, _ = self.client.request(
+            "POST",
+            "/api/shop/sales",
+            token=token,
+            payload={
+                "payment_method": "cash",
+                "items": [{"product_id": first["item"]["id"], "quantity": 1}],
+            },
+        )
+        self.assertEqual(status, 409, sale)
+
+    def test_pet_shop_seller_is_limited_to_shop_data(self) -> None:
+        token = self.login("shopkeeper@petclinic.local")
+        for path in ("/api/customers", "/api/pets", "/api/records", "/api/labs"):
+            with self.subTest(path=path):
+                status, body, _ = self.client.request("GET", path, token=token)
+                self.assertEqual(status, 403, body)
+        status, body, _ = self.client.request(
+            "GET", "/api/shop/products", token=token
+        )
+        self.assertEqual(status, 200, body)
+
     def test_invalid_credentials_are_rejected(self) -> None:
         status, body, _ = self.client.request(
             "POST",
