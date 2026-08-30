@@ -770,6 +770,8 @@ class Handler(BaseHTTPRequestHandler):
             if actor["role"] not in {"admin", "vet", "shop_seller"}:
                 return self.send_json(403, {"error": "دسترسی به پت‌شاپ مجاز نیست"})
             return self.shop_patch(resource, record_id, payload, actor)
+        if actor["role"] not in {"admin", "vet"}:
+            return self.send_json(403, {"error": "role is not allowed to edit clinic data"})
         if resource == "/api/lab-requests":
             allowed = {"panel", "sample", "priority", "reason", "doctor", "status", "accession_number", "result_json", "received_at", "completed_at"}
             if payload.get("status") not in (None, "requested", "sampling", "received", "processing", "completed", "cancelled"):
@@ -934,8 +936,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         path = urlparse(self.path).path
-        if not self.user():
+        actor = self.user()
+        if not actor:
             return
+        if actor["role"] not in {"admin", "vet"}:
+            return self.send_json(403, {"error": "role is not allowed to delete clinic data"})
         try:
             resource, raw_id = path.rsplit("/", 1)
             record_id = int(raw_id)

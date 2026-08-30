@@ -307,6 +307,95 @@ class PetClinicApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 200, body)
 
+    def test_non_clinic_roles_cannot_patch_or_delete_clinic_data(self) -> None:
+        admin_token = self.login("admin@petclinic.local")
+        status, customer_body, _ = self.client.request(
+            "POST", "/api/customers", token=admin_token,
+            payload={"name": "Access Boundary Owner", "phone": "09121112233"},
+        )
+        self.assertEqual(status, 201, customer_body)
+        for email in ("customer@test.local", "shopkeeper@petclinic.local"):
+            status, role_customer, _ = self.client.request(
+                "POST", "/api/customers", token=admin_token,
+                payload={"name": f"Boundary {email}", "phone": "09121112244"},
+            )
+            self.assertEqual(status, 201, role_customer)
+            customer_id = role_customer["item"]["id"]
+            token = self.login(email)
+            with self.subTest(role=email, operation="patch"):
+                status, body, _ = self.client.request(
+                    "PATCH", f"/api/customers/{customer_id}", token=token,
+                    payload={"name": "Unauthorized Change"},
+                )
+                self.assertEqual(status, 403, body)
+            with self.subTest(role=email, operation="delete"):
+                status, body, _ = self.client.request(
+                    "DELETE", f"/api/customers/{customer_id}", token=token,
+                )
+                self.assertEqual(status, 403, body)
+
+        status, authorized_customer, _ = self.client.request(
+            "POST", "/api/customers", token=admin_token,
+            payload={"name": "Authorized Owner", "phone": "09121112255"},
+        )
+        self.assertEqual(status, 201, authorized_customer)
+        status, body, _ = self.client.request(
+            "PATCH", f"/api/customers/{authorized_customer['item']['id']}", token=admin_token,
+            payload={"name": "Authorized Change"},
+        )
+        self.assertEqual(status, 200, body)
+
+    def test_role_access_matrix_allows_vet_clinic_but_not_shop_management(self) -> None:
+        token = self.login("vet@petclinic.local")
+        status, body, _ = self.client.request("GET", "/api/customers", token=token)
+        self.assertEqual(status, 200, body)
+        status, body, _ = self.client.request(
+            "POST", "/api/shop/products", token=token,
+            payload={
+                "barcode": "6260000000998", "name": "Vet Access Test",
+                "purchase_price": 10, "sale_price": 20,
+            },
+        )
+        self.assertEqual(status, 201, body)
+
+    def test_login_and_access_matrix_for_all_roles(self) -> None:
+        expected_roles = {
+            "admin@petclinic.local": "admin",
+            "vet@petclinic.local": "vet",
+            "customer@test.local": "customer",
+            "shopkeeper@petclinic.local": "shop_seller",
+        }
+        for email, expected_role in expected_roles.items():
+            with self.subTest(email=email):
+                status, body, _ = self.client.request(
+                    "POST", "/api/auth/login",
+                    payload={"email": email, "password": "123456"},
+                )
+                self.assertEqual(status, 200, body)
+                self.assertEqual(body["user"]["role"], expected_role)
+                self.assertTrue(body["token"])
+
+        admin_token = self.login("admin@petclinic.local")
+        for email in ("customer@test.local", "shopkeeper@petclinic.local"):
+            token = self.login(email)
+            with self.subTest(role=email, operation="post"):
+                status, body, _ = self.client.request(
+                    "POST", "/api/customers", token=token,
+                    payload={"name": "Blocked", "phone": "09120000001"},
+                )
+                self.assertEqual(status, 403, body)
+            with self.subTest(role=email, operation="patch"):
+                status, body, _ = self.client.request(
+                    "PATCH", "/api/settings/1", token=token,
+                    payload={"clinic_name": "Blocked"},
+                )
+                self.assertEqual(status, 403, body)
+        status, body, _ = self.client.request(
+            "POST", "/api/settings", token=admin_token,
+            payload={"clinic_name": "Access Matrix Clinic"},
+        )
+        self.assertEqual(status, 200, body)
+
     def test_invalid_credentials_are_rejected(self) -> None:
         status, body, _ = self.client.request(
             "POST",
