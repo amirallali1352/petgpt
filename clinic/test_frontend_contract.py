@@ -48,6 +48,13 @@ class SpeciesAwareFrontendContractTests(unittest.TestCase):
         self.assertIn("Number(item.pet_id) === Number(petId)", SOURCE)
         self.assertIn("loadRemoteData().finally(() => this.loadPetData())", SOURCE)
 
+    def test_lab_print_contains_answer_details(self) -> None:
+        self.assertIn("function printLaboratoryPatient(petName)", SOURCE)
+        self.assertIn("getUnifiedLabResultsForPet(petName, pet?.id)", SOURCE)
+        self.assertIn("بازه مرجع", SOURCE)
+        self.assertIn("تفسیر", SOURCE)
+        self.assertIn("window.print()", SOURCE)
+
     def test_lab_catalog_has_species_ranges(self) -> None:
         self.assertRegex(SOURCE, r"dog:\s*\[[^\]]+\]")
         self.assertRegex(SOURCE, r"cat:\s*\[[^\]]+\]")

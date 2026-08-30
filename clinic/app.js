@@ -1658,10 +1658,20 @@ function openLabAnswerModal(petName, index) {
 function printLaboratoryPatient(petName) {
   const pet = state.pets.find(item => item.name === petName);
   const record = getPetClinicalRecord(petName);
-  const rows = record.labRequests.map(item => `<tr><td>${item.panel || ""}</td><td>${item.sample || ""}</td><td>${item.status || ""}</td><td>${item.result || "—"} ${item.unit || ""}</td></tr>`).join("");
+  const results = getUnifiedLabResultsForPet(petName, pet?.id);
+  const requestsById = new Map(record.labRequests.map(item => [item.id, item]));
+  const resultRows = results.map(item => {
+    const request = requestsById.get(item.requestId);
+    return `<tr><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.result)} ${escapeHtml(item.unit)}</td><td>${escapeHtml(item.reference || "بازه مرجع ثبت نشده")}</td><td>${item.status === "danger" ? "بحرانی" : item.status === "warning" ? "نیازمند بررسی" : "طبیعی"}</td><td>${escapeHtml(item.interpretation || "—")}</td><td>${escapeHtml(item.date || request?.createdAt || "—")}</td></tr>`;
+  }).join("");
+  const pendingRows = record.labRequests
+    .filter(item => !results.some(result => result.requestId === item.id))
+    .map(item => `<tr><td>${escapeHtml(item.panel || "آزمایش")}</td><td>—</td><td>—</td><td>${escapeHtml(item.status || "درخواست‌شده")}</td><td>نتیجه هنوز ثبت نشده است</td><td>${escapeHtml(item.createdAt || "—")}</td></tr>`)
+    .join("");
+  const rows = resultRows || pendingRows;
   const printWindow = window.open("", "_blank", "width=900,height=700");
   if (!printWindow) return toast("پنجره چاپ توسط مرورگر مسدود شده است.");
-  printWindow.document.write(`<html dir="rtl"><head><title>برگه آزمایش ${petName}</title><style>body{font-family:Tahoma;padding:30px;color:#102a43}h1{font-size:22px}p{color:#5d707b}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #b9c9cf;padding:10px;text-align:right}th{background:#edf7f6}</style></head><body><h1>برگه آزمایش پت‌کلینیک</h1><p>بیمار: ${petName} · صاحب: ${pet?.owner || "—"} · گونه: ${pet?.species || "—"}</p><table><thead><tr><th>آزمایش</th><th>نمونه</th><th>وضعیت</th><th>نتیجه</th></tr></thead><tbody>${rows || "<tr><td colspan='4'>درخواستی ثبت نشده است.</td></tr>"}</tbody></table><script>window.onload=()=>window.print();</script></body></html>`);
+  printWindow.document.write(`<html dir="rtl"><head><meta charset="utf-8"><title>جواب آزمایش ${escapeHtml(petName)}</title><style>body{font-family:Tahoma,Arial;padding:30px;color:#102a43}h1{font-size:22px;margin-bottom:6px}p{color:#5d707b}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #b9c9cf;padding:9px;text-align:right;font-size:12px}th{background:#edf7f6}.muted{color:#7b8d94;font-size:11px}.danger{color:#b55c5e;font-weight:700}.warning{color:#a06c38;font-weight:700}.sign{display:flex;justify-content:space-between;margin-top:55px}.empty{text-align:center;padding:18px}</style></head><body><h1>جواب آزمایش پت‌کلینیک</h1><p>بیمار: <b>${escapeHtml(petName)}</b> · صاحب: <b>${escapeHtml(pet?.owner || "—")}</b> · گونه: <b>${escapeHtml(pet?.species || "—")}</b></p><p class="muted">تاریخ چاپ: ${escapeHtml(new Intl.DateTimeFormat("fa-IR").format(new Date()))} · بازه‌های مرجع بر اساس گونه و کاتالوگ آزمایشگاه</p><table><thead><tr><th>آزمایش</th><th>نتیجه</th><th>بازه مرجع</th><th>وضعیت</th><th>تفسیر</th><th>تاریخ</th></tr></thead><tbody>${rows || "<tr><td class='empty' colspan='6'>جواب یا درخواست آزمایشی ثبت نشده است.</td></tr>"}</tbody></table><div class="sign"><span>امضای دامپزشک: ................</span><span>مهر آزمایشگاه: ................</span></div><script>window.onload=()=>window.print();</script></body></html>`);
   printWindow.document.close();
 }
 
