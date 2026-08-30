@@ -35,6 +35,16 @@ class SpeciesAwareFrontendContractTests(unittest.TestCase):
         self.assertIn("const refreshAnswerMeta", SOURCE)
         self.assertIn("testKey: test.testKey", SOURCE)
 
+    def test_lab_data_has_one_normalized_source_for_all_views(self) -> None:
+        self.assertIn("normalizeLabResult", SOURCE)
+        self.assertIn("getUnifiedLabResultsForPet", SOURCE)
+        self.assertIn("remoteLabResults", SOURCE)
+        self.assertIn("getUnifiedLabResultsForPet(this.currentPet.name)", SOURCE)
+        self.assertIn("getUnifiedLabResultsForPet(petName)", SOURCE)
+        self.assertIn("const unifiedLabs = this.currentPet ? getUnifiedLabResultsForPet(this.currentPet.name) : []", SOURCE)
+        self.assertIn("request.answers?.length", SOURCE)
+        self.assertIn("nutrition-lab-result-grid", SOURCE)
+
     def test_lab_catalog_has_species_ranges(self) -> None:
         self.assertRegex(SOURCE, r"dog:\s*\[[^\]]+\]")
         self.assertRegex(SOURCE, r"cat:\s*\[[^\]]+\]")

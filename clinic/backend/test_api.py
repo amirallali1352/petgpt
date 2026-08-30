@@ -582,6 +582,42 @@ class PetClinicApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 201, body)
 
+    def test_lab_answer_is_synchronized_between_request_and_lab_record(self) -> None:
+        token = self.login("admin@petclinic.local")
+        status, customer_body, _ = self.client.request(
+            "POST", "/api/customers", token=token,
+            payload={"name": "Lab Sync Owner", "phone": "09120001122"},
+        )
+        self.assertEqual(status, 201, customer_body)
+        status, pet_body, _ = self.client.request(
+            "POST", "/api/pets", token=token,
+            payload={"owner_id": customer_body["item"]["id"], "name": "Lab Sync Pet", "species": "cat"},
+        )
+        self.assertEqual(status, 201, pet_body)
+        status, request_body, _ = self.client.request(
+            "POST", "/api/lab-requests", token=token,
+            payload={"pet_id": pet_body["item"]["id"], "panel": "CBC", "status": "requested"},
+        )
+        self.assertEqual(status, 201, request_body)
+        request_id = request_body["item"]["id"]
+        answer = [{
+            "name": "WBC", "testKey": "wbc", "species": "cat",
+            "result": "8.2", "unit": "10^9/L", "flag": "طبیعی",
+            "reference": "4.5 تا 14 10^9/L", "interpretation": "همسان‌سازی تست",
+        }]
+        status, completed, _ = self.client.request(
+            "PATCH", f"/api/lab-requests/{request_id}", token=token,
+            payload={"status": "completed", "result_json": answer},
+        )
+        self.assertEqual(status, 200, completed)
+        status, requests, _ = self.client.request("GET", "/api/lab-requests", token=token)
+        self.assertEqual(status, 200, requests)
+        synced_request = next(item for item in requests["items"] if item["id"] == request_id)
+        status, labs, _ = self.client.request("GET", "/api/labs", token=token)
+        self.assertEqual(status, 200, labs)
+        synced_lab = next(item for item in labs["items"] if item["request_id"] == request_id)
+        self.assertEqual(json.loads(synced_request["result_json"]), json.loads(synced_lab["result_json"]))
+
     def test_required_fields_are_rejected_for_each_create_endpoint(self) -> None:
         token = self.login("admin@petclinic.local")
         invalid_requests = {

@@ -246,7 +246,7 @@ const bcsSystem = {
   
   calculateCalories: function(weight, bcs, species, ageGroup, neutered, pregnant, lactating) {
     if (!weight || weight <= 0) return 0;
-    
+
     // RER (Resting Energy Requirement)
     const rer = Math.round(70 * Math.pow(weight, 0.75));
     
@@ -670,36 +670,28 @@ function getPetClinicalRecord(name) {
         treatment: item.treatment || ""
       };
     });
-  const remoteLabs = remoteData.labs
-    .filter(item => item.pet_name === name)
-    .map(item => {
-      const result = (() => { try { return typeof item.result_json === "string" ? JSON.parse(item.result_json) : (item.result_json || {}); } catch { return {}; } })();
-      return {
-        id: item.id,
-        name: result.name || item.panel,
-        result: result.result || result.value || "—",
-        unit: result.unit || "",
-        reference: result.reference || "",
-        note: result.note || result.interpretation || "",
-        date: item.created_at || "",
-        status: result.flag === "بحرانی" ? "danger" : result.flag === "طبیعی" ? "success" : "warning"
-      };
-    });
+  const remoteLabs = getUnifiedLabResultsForPet(name);
   const remoteLabRequests = remoteData.labRequests
     .filter(item => item.pet_name === name)
-    .map(item => ({
-      id: item.id,
-      panel: item.panel,
-      sample: item.sample,
-      priority: item.priority,
-      reason: item.reason,
-      doctor: item.doctor,
-      status: labApiToUiStatus[item.status] || item.status,
-      accessionNumber: item.accession_number,
-      result: (() => { const value = item.result_json; try { const parsed = typeof value === "string" ? JSON.parse(value) : value; return Array.isArray(parsed) ? parsed.map(x => `${x.name}: ${x.result}`).join(" · ") : parsed?.summary || ""; } catch { return ""; } })(),
-      createdAt: item.created_at,
-      completedAt: item.completed_at
-    }));
+    .map(item => {
+      const answers = remoteLabs.filter(result => result.requestId === item.id);
+      return {
+        id: item.id,
+        panel: item.panel,
+        sample: item.sample,
+        priority: item.priority,
+        reason: item.reason,
+        doctor: item.doctor,
+        status: labApiToUiStatus[item.status] || item.status,
+        accessionNumber: item.accession_number,
+        answers,
+        result: answers.map(answer => `${answer.name}: ${answer.result}`).join(" · "),
+        unit: answers.map(answer => answer.unit).filter(Boolean).join(" · "),
+        interpretation: answers.map(answer => answer.interpretation).filter(Boolean).join(" · "),
+        createdAt: item.created_at,
+        completedAt: item.completed_at
+      };
+    });
   const remoteImaging = remoteModuleData.imaging
     .filter(item => item.pet_name === name)
     .map(item => ({
@@ -740,7 +732,7 @@ function getPetClinicalRecord(name) {
     ...base,
     ...stored,
     allergies: asArray(stored.allergies).length ? stored.allergies : (asArray(base.allergies).length ? base.allergies : ["حساسیت دارویی ثبت نشده"]),
-    labs: remoteData.loaded ? remoteLabs : [...asArray(base.labs), ...asArray(stored.labs)],
+    labs: getUnifiedLabResultsForPet(name),
     imaging: remoteImaging.length ? remoteImaging : [...asArray(base.imaging), ...asArray(stored.imaging)],
     labRequests: remoteData.loaded ? remoteLabRequests : (asArray(stored.labRequests).length ? stored.labRequests : asArray(base.labRequests)),
     imagingRequests: [...asArray(base.imagingRequests), ...asArray(stored.imagingRequests)],
@@ -758,6 +750,76 @@ function getPetClinicalRecord(name) {
     medicines: remoteMedicines.length ? remoteMedicines : (Array.isArray(stored.medicines) && stored.medicines.length ? stored.medicines : (Array.isArray(base.medicines) && base.medicines.length ? base.medicines : ["داروی جاری ثبت نشده"])),
     notes: stored.notes || base.notes || "یادداشت بالینی ثبت نشده است."
   };
+}
+
+function parseLabResultJson(value) {
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : (value || {});
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeLabResult(item, answer = {}, source = "lab") {
+  const flag = answer.flag || answer.status || "";
+  const normalizedStatus = answer.status === "danger" || answer.status === "critical" ? "danger"
+    : answer.status === "success" || answer.status === "normal" ? "success"
+      : flag === "بحرانی" ? "danger"
+        : flag === "طبیعی" || flag === "منفی" ? "success" : "warning";
+  return {
+    id: `${source}-${item.id || item.request_id || "local"}-${answer.testKey || answer.name || item.panel || "result"}`,
+    requestId: item.request_id || item.id || null,
+    name: answer.name || answer.label || item.panel || "نتیجه آزمایش",
+    testKey: answer.testKey || "",
+    result: answer.result ?? answer.value ?? answer.text ?? "—",
+    unit: answer.unit || "",
+    reference: answer.reference || "",
+    interpretation: answer.interpretation || answer.note || "",
+    date: item.created_at || item.completed_at || "",
+    species: answer.species || item.species || "",
+    flag,
+    status: normalizedStatus
+  };
+}
+
+function remoteLabResults(petName) {
+  return remoteData.labs
+    .filter(item => item.pet_name === petName)
+    .flatMap(item => parseLabResultJson(item.result_json).map(answer => normalizeLabResult(item, answer, "lab")));
+}
+
+function getUnifiedLabResultsForPet(petName) {
+  const labRows = remoteLabResults(petName);
+  const requestRows = remoteData.labRequests
+    .filter(item => item.pet_name === petName && item.status === "completed")
+    .flatMap(item => parseLabResultJson(item.result_json).map(answer => normalizeLabResult(item, answer, "request")))
+    .filter(row => !labRows.some(lab => (
+      lab.requestId && row.requestId && lab.requestId === row.requestId &&
+      (lab.testKey === row.testKey || lab.name === row.name) &&
+      String(lab.result) === String(row.result)
+    )));
+  if (remoteData.loaded) return [...labRows, ...requestRows];
+
+  const localLabs = value => Array.isArray(value) ? value : [];
+  const local = [...localLabs((petClinicalData[petName] || {}).labs), ...localLabs((clinicalStore[petName] || {}).labs)]
+    .map((answer, index) => normalizeLabResult(
+      { id: `local-${petName}-${index}`, created_at: answer.date, species: state.pets.find(pet => pet.name === petName)?.species },
+      answer,
+      "local"
+    ));
+  const remote = [...labRows, ...requestRows];
+  return [...remote, ...local.filter(row => !remote.some(item =>
+    item.name === row.name && String(item.result) === String(row.result)
+  ))];
+}
+
+function labFieldForResult(lab) {
+  if (lab?.testKey) return lab.testKey;
+  const match = flattenLaboratoryCatalog().find(test =>
+    test.label === lab?.name || test.name === lab?.name || lab?.name?.includes(test.label || test.name)
+  );
+  return match?.testKey || match?.field || "";
 }
 
 function updateClinicalRecord(name, patch) {
@@ -1507,7 +1569,7 @@ function renderLaboratoryResponseWorkspace(selectedPetName = "") {
       <div class="lab-stepper">${["درخواست‌شده", "نمونه‌گیری", "نمونه دریافت شد", "در حال انجام", "انجام‌شده"].map(step => `<span class="${step === request.status ? "active" : ["درخواست‌شده", "نمونه‌گیری", "نمونه دریافت شد", "در حال انجام", "انجام‌شده"].indexOf(step) < ["درخواست‌شده", "نمونه‌گیری", "نمونه دریافت شد", "در حال انجام", "انجام‌شده"].indexOf(request.status) ? "done" : ""}">${step}</span>`).join("")}</div>
       <div class="lab-request-meta"><span>اولویت <b>${request.priority || "عادی"}</b></span><span>پزشک درخواست‌کننده <b>${request.doctor || "دکتر پارسا"}</b></span><span>علت <b>${request.reason || "ثبت نشده"}</b></span></div>
       <div class="lab-request-actions"><button type="button" class="button ghost lab-status-button" data-lab-status="نمونه‌گیری" data-lab-pet="${selected}" data-lab-index="${index}">نمونه‌گیری</button><button type="button" class="button ghost lab-status-button" data-lab-status="نمونه دریافت شد" data-lab-pet="${selected}" data-lab-index="${index}">دریافت نمونه</button><button type="button" class="button ghost lab-status-button" data-lab-status="در حال انجام" data-lab-pet="${selected}" data-lab-index="${index}">شروع آزمایش</button><button type="button" class="button primary lab-answer-button" data-lab-answer="${selected}" data-lab-index="${index}">ثبت جواب</button>${request.status === "انجام‌شده" ? `<button type="button" class="button ghost lab-status-button" data-lab-status="در حال انجام" data-lab-pet="${selected}" data-lab-index="${index}">بازگشت به در حال انجام</button>` : ""}</div>
-      ${request.result ? `<div class="lab-answer-preview"><strong>نتیجه ثبت‌شده:</strong> ${request.result} ${request.unit || ""}<small>${request.interpretation || ""}</small></div>` : ""}
+      ${request.answers?.length ? `<div class="lab-answer-preview"><strong>نتیجه ثبت‌شده:</strong><div class="lab-answer-result-grid">${request.answers.map(answer => `<div class="lab-answer-result-item"><span>${escapeHtml(answer.name)}</span><b>${escapeHtml(answer.result)} ${escapeHtml(answer.unit)}</b><small>${escapeHtml(answer.reference || "بازه مرجع ثبت نشده")} ${answer.interpretation ? `· ${escapeHtml(answer.interpretation)}` : ""}</small></div>`).join("")}</div></div>` : request.result ? `<div class="lab-answer-preview"><strong>نتیجه ثبت‌شده:</strong> ${escapeHtml(request.result)} ${escapeHtml(request.unit || "")}<small>${escapeHtml(request.interpretation || "")}</small></div>` : ""}
     </article>`).join("") || `<div class="empty-copy">برای این بیمار درخواست آزمایش وجود ندارد.</div>`;
   target.innerHTML = `<div class="lab-queue-toolbar"><label class="table-search">⌕ <input id="labPatientSearch" placeholder="جستجوی بیمار یا صاحب..." /></label><div class="lab-queue-filters"><button type="button" class="filter-chip active" data-lab-filter="all">همه</button><button type="button" class="filter-chip" data-lab-filter="open">باز</button><button type="button" class="filter-chip" data-lab-filter="critical">بحرانی</button><button type="button" class="filter-chip" data-lab-filter="done">انجام‌شده</button></div></div><div class="lab-response-layout"><aside class="workspace-card lab-patient-list"><div class="workspace-toolbar"><div><h2>صف بیماران آزمایشگاه</h2><p>${petNames.length} بیمار · مرتب‌شده بر اساس اولویت</p></div></div><div id="labPatientItems">${patients}</div></aside><section class="workspace-card lab-request-list"><div class="workspace-toolbar"><div><h2>برگه کار آزمایشگاه · ${selected || "بیمار"}</h2><p>هر درخواست از پذیرش نمونه تا تأیید نتیجه قابل پیگیری است.</p></div><div class="lab-toolbar-actions"><button type="button" class="button ghost" id="labPrintSelected">🖨 چاپ برگه</button><button type="button" class="button ghost" data-lab-open-exam="${selected}">مشاهده پرونده</button></div></div><div class="lab-print-area">${rows}</div></section></div>`;
   $$("[data-lab-patient]", target).forEach(button => button.addEventListener("click", () => renderLaboratoryResponseWorkspace(button.dataset.labPatient)));
@@ -2252,6 +2314,7 @@ const nutritionSystem = {
     if (!this.currentPet) return;
     
     // Load clinical data
+    const unifiedLabs = getUnifiedLabResultsForPet(this.currentPet.name);
     const clinical = getPetClinicalRecord(this.currentPet.name);
     
     // Load diseases
@@ -2264,11 +2327,9 @@ const nutritionSystem = {
     
     // Load lab results
     this.labResults = {};
-    clinical.labs.forEach(lab => {
-      if (lab.name.includes('گلوکز')) this.labResults.glu = lab.result;
-      if (lab.name.includes('کراتینین')) this.labResults.crea = lab.result;
-      if (lab.name.includes('ALT')) this.labResults.alt = lab.result;
-      if (lab.name.includes('AST')) this.labResults.ast = lab.result;
+    unifiedLabs.forEach(lab => {
+      const field = labFieldForResult(lab);
+      if (field) this.labResults[field] = lab.result;
     });
     this.renderLabResults();
 
@@ -2416,8 +2477,27 @@ const nutritionSystem = {
     if (!container) return;
     const species = speciesKey(this.currentPet?.species);
     const speciesLabel = species === "cat" ? "گربه" : "سگ";
-    
-    let html = '';
+    const unifiedLabs = this.currentPet ? getUnifiedLabResultsForPet(this.currentPet.name) : [];
+    const resultCards = unifiedLabs.map(lab => `
+      <article class="nutrition-lab-result-card ${lab.status}">
+        <div class="nutrition-lab-result-card-head">
+          <strong>${escapeHtml(lab.name)}</strong>
+          <span class="status ${lab.status === "danger" ? "danger" : lab.status === "warning" ? "warning" : "success"}">${lab.status === "danger" ? "بحرانی" : lab.status === "warning" ? "نیازمند بررسی" : "طبیعی"}</span>
+        </div>
+        <div class="nutrition-lab-result-value">${escapeHtml(lab.result)} <small>${escapeHtml(lab.unit)}</small></div>
+        <div class="nutrition-lab-result-meta">${escapeHtml(lab.reference || "بازه مرجع ثبت نشده")} ${lab.date ? `· ${escapeHtml(lab.date)}` : ""}</div>
+        ${lab.interpretation ? `<p>${escapeHtml(lab.interpretation)}</p>` : ""}
+      </article>
+    `).join("");
+    let html = `
+      <section class="nutrition-lab-summary" aria-label="جواب‌های ثبت‌شده آزمایشگاه">
+        <div class="nutrition-lab-summary-head">
+          <div><strong>جواب‌های ثبت‌شده آزمایشگاه</strong><small>منبع مشترک جواب آزمایشگاه برای پرونده، آزمایشگاه و جیره‌نویسی</small></div>
+          <span class="status blue-status">${speciesLabel}</span>
+        </div>
+        <div class="nutrition-lab-result-grid">${resultCards || '<div class="nutrition-lab-empty">برای این حیوان هنوز جواب آزمایش ثبت نشده است.</div>'}</div>
+      </section>
+    `;
     for (const [category, data] of Object.entries(labTestsCatalog)) {
       const categoryId = category.replace(/[^a-zA-Z0-9]/g, '_');
       html += `
