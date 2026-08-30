@@ -41,6 +41,36 @@ class PetShopFrontendContractTests(unittest.TestCase):
         self.assertIn("shopStockForm", APP)
         self.assertIn('["dashboard", "pet-shop"].includes(section)', APP)
 
+    def test_shop_has_dedicated_sidebar_and_module_navigation(self) -> None:
+        for marker in (
+            "shop-sidebar",
+            "shop-nav-item",
+            "shopActiveModule",
+            "shop-dashboard",
+            "shop-products",
+            "shop-inventory",
+            "shop-sales",
+            "shop-reports",
+            "renderShopSidebar",
+        ):
+            self.assertIn(marker, APP)
+
+    def test_shop_mode_hides_clinic_navigation(self) -> None:
+        self.assertIn("shop-mode", APP)
+        self.assertIn("data-shop-module", APP)
+        self.assertIn("document.body.classList.toggle(\"shop-mode\"", APP)
+
+    def test_shop_workspace_is_split_into_clear_sections(self) -> None:
+        for marker in (
+            "shop-page-shell",
+            "shop-page-header",
+            "shop-section-title",
+            "shop-product-form",
+            "shop-stock-form",
+            "shop-sale-form",
+        ):
+            self.assertIn(marker, APP)
+
     def test_javascript_syntax(self) -> None:
         import subprocess
 
@@ -48,6 +78,7 @@ class PetShopFrontendContractTests(unittest.TestCase):
             ["node", "--check", str(ROOT / "app.js")],
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 

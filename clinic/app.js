@@ -958,30 +958,88 @@ function shopCartTotal() {
   return shopCart.reduce((sum, item) => sum + Number(item.unit_price || 0) * Number(item.quantity || 0), 0);
 }
 
+let shopActiveModule = "shop-dashboard";
+
+const shopModules = [
+  ["shop-dashboard", "داشبورد", "▦"],
+  ["shop-products", "کالاها و کاتالوگ", "▤"],
+  ["shop-inventory", "انبارگردانی", "◫"],
+  ["shop-sales", "فروش و صندوق", "▣"],
+  ["shop-reports", "گزارش‌ها", "◌"]
+];
+
+function renderShopSidebar() {
+  return `<aside class="shop-sidebar">
+    <div class="shop-brand"><div class="shop-brand-mark">🛒</div><div><strong>پت‌شاپ پرو</strong><span>مدیریت فروش و انبار</span></div></div>
+    <div class="shop-operator"><div class="shop-operator-avatar">ف</div><div><strong>${escapeHtml(session?.name || "فروشنده پت‌شاپ")}</strong><span>حساب فروشنده</span></div><i>●</i></div>
+    <nav class="shop-nav" aria-label="منوی فروشگاه">
+      <small class="shop-nav-label">مدیریت فروشگاه</small>
+      ${shopModules.map(([id, label, icon]) => `<button type="button" class="shop-nav-item ${shopActiveModule === id ? "active" : ""}" data-shop-module="${id}"><span>${icon}</span><b>${label}</b>${id === "shop-sales" ? `<em>POS</em>` : ""}</button>`).join("")}
+    </nav>
+    <div class="shop-sidebar-footer"><div class="shop-security"><span>✓</span><div><strong>سیستم امن و فعال</strong><small>آخرین همگام‌سازی همین الان</small></div></div><button type="button" class="shop-exit" id="shopExitClinic">↩ بازگشت به کلینیک</button></div>
+  </aside>`;
+}
+
+function shopSectionTitle(eyebrow, title, description, action = "") {
+  return `<div class="shop-page-header"><div><div class="shop-eyebrow">${eyebrow}</div><h1>${title}</h1><p>${description}</p></div>${action}</div>`;
+}
+
+function shopProductRows(products) {
+  return products.map(item => `<tr><td><div class="shop-product-name"><span>${escapeHtml((item.name || "ک").slice(0, 1))}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.brand || item.category || "بدون دسته‌بندی")}</small></div></td><td><code>${escapeHtml(item.barcode)}</code></td><td>${shopMoney(item.purchase_price)}</td><td>${shopMoney(item.sale_price)}</td><td><strong>${item.stock}</strong> ${escapeHtml(item.unit)}</td><td><span class="status ${Number(item.stock) <= Number(item.reorder_level) ? "warning" : "success"}">${Number(item.stock) <= Number(item.reorder_level) ? "نیازمند تأمین" : "موجود"}</span></td><td><button class="text-button shop-edit-product" data-product-id="${item.id}">ویرایش</button></td></tr>`).join("");
+}
+
+function renderShopModule(module, data) {
+  const section = $('.page-section[data-view="pet-shop"]');
+  const body = $("#shopModuleBody", section);
+  if (!body) return;
+  const products = data.products || [];
+  const report = data.report || {};
+  const productOptions = products.map(item => `<option value="${item.id}">${escapeHtml(item.name)} · ${escapeHtml(item.barcode)} · موجودی ${item.stock}</option>`).join("");
+  const rows = shopProductRows(products);
+  const salesRows = (data.sales || []).map(sale => `<div class="shop-sale-row"><span><strong>${escapeHtml(sale.invoice_number)}</strong><small>${escapeHtml(sale.customer_name || "مشتری آزاد")} · ${escapeHtml(sale.created_at || "")}</small></span><b>${shopMoney(sale.total)}</b><span class="status ${sale.status === "completed" ? "success" : "warning"}">${sale.status === "completed" ? "تکمیل‌شده" : sale.status === "returned" ? "مرجوع‌شده" : escapeHtml(sale.status)}</span>${sale.status === "completed" ? `<button class="text-button shop-return-sale" data-sale-id="${sale.id}">مرجوعی</button>` : ""}</div>`).join("") || `<div class="shop-empty">هنوز فروشی ثبت نشده است.</div>`;
+  const cartRows = shopCart.map((item, index) => `<div class="shop-cart-row"><span>${escapeHtml(item.name)}<small>${item.quantity} × ${shopMoney(item.unit_price)}</small></span><strong>${shopMoney(item.quantity * item.unit_price)}</strong><button type="button" class="row-more shop-remove-cart" data-cart-index="${index}">×</button></div>`).join("") || `<div class="shop-empty">سبد خرید خالی است.</div>`;
+  const kpis = `<div class="shop-kpi-grid"><div class="shop-kpi teal"><span>درآمد کل</span><strong>${shopMoney(report.revenue)}</strong><small>فروش تکمیل‌شده</small></div><div class="shop-kpi purple"><span>سود ناخالص</span><strong>${shopMoney(report.profit)}</strong><small>حاشیه سود فعلی</small></div><div class="shop-kpi orange"><span>فاکتورهای فروش</span><strong>${report.sales_count || 0}</strong><small>ثبت‌شده در سیستم</small></div><div class="shop-kpi red"><span>هشدار موجودی</span><strong>${report.low_stock_count || 0}</strong><small>نیازمند تأمین</small></div></div>`;
+  const shopGreeting = escapeHtml(session?.name || "فروشنده");
+  let html = "";
+  if (module === "shop-dashboard") {
+    html = `${shopSectionTitle("مرکز کنترل فروشگاه", `سلام، ${shopGreeting} 👋`, "عملیات فروش، موجودی و عملکرد پت‌شاپ را از یک صفحه کنترل کنید.", `<button class="shop-refresh" id="shopRefresh">↻ بروزرسانی</button>`)}${kpis}<div class="shop-dashboard-grid"><div class="shop-card"><div class="shop-section-title"><div><h2>آخرین فاکتورها</h2><p>آخرین فعالیت‌های فروشگاه</p></div><button class="shop-link" data-shop-target="shop-sales">مشاهده همه ←</button></div><div class="shop-sales-list">${salesRows}</div></div><div class="shop-card shop-quick-card"><div class="shop-section-title"><div><h2>دسترسی سریع</h2><p>عملیات پرتکرار صندوق‌دار</p></div></div><div class="shop-quick-actions"><button type="button" data-shop-target="shop-sales"><span>▣</span><b>فروش جدید</b><small>ثبت فاکتور و دریافت وجه</small></button><button type="button" data-shop-target="shop-products"><span>＋</span><b>ثبت کالای جدید</b><small>افزودن به کاتالوگ</small></button><button type="button" data-shop-target="shop-inventory"><span>◫</span><b>ورود به انبار</b><small>ثبت خرید و اصلاح موجودی</small></button></div></div></div>`;
+  } else if (module === "shop-products") {
+    html = `${shopSectionTitle("کاتالوگ و قیمت‌گذاری", "کالاها و کاتالوگ", "کالاها، بارکد، SKU، قیمت خرید و فروش را حرفه‌ای مدیریت کنید.", `<button class="shop-refresh" id="shopRefresh">↻ بروزرسانی</button>`)}<div class="shop-card shop-form-card"><div class="shop-section-title"><div><h2>ثبت کالای جدید</h2><p>اطلاعات کالا را کامل و دقیق وارد کنید.</p></div><span class="shop-badge">کاتالوگ</span></div><form id="shopProductForm" class="shop-form-grid shop-product-form"><label>نام کالا<input name="name" placeholder="مثلاً غذای خشک سگ" required /></label><label>بارکد<input name="barcode" placeholder="6260000000000" required /></label><label>SKU<input name="sku" placeholder="SKU-001" /></label><label>دسته‌بندی<input name="category" placeholder="غذا، اسباب‌بازی..." /></label><label>برند<input name="brand" placeholder="برند کالا" /></label><label>واحد<input name="unit" value="عدد" /></label><label>قیمت خرید<input name="purchase_price" type="number" min="0" placeholder="۰" required /></label><label>قیمت فروش<input name="sale_price" type="number" min="0" placeholder="۰" required /></label><label>حد سفارش<input name="reorder_level" type="number" min="0" value="0" /></label><div class="shop-form-submit"><button class="button primary" type="submit">＋ ثبت کالا</button></div></form></div><div class="shop-card shop-products-card"><div class="shop-section-title"><div><h2>فهرست کالاها</h2><p>${products.length} کالا در کاتالوگ فعال است.</p></div><label class="shop-search">⌕<input id="shopProductSearch" placeholder="نام، SKU یا بارکد..." /></label></div><div class="shop-table-wrap"><table class="shop-table"><thead><tr><th>کالا</th><th>بارکد</th><th>خرید</th><th>فروش</th><th>موجودی</th><th>وضعیت</th><th></th></tr></thead><tbody id="shopProductRows">${rows || `<tr><td colspan="7"><div class="shop-empty">کالایی ثبت نشده است.</div></td></tr>`}</tbody></table></div></div>`;
+  } else if (module === "shop-inventory") {
+    const movementRows = (data.movements || []).slice(0, 15).map(item => `<div class="shop-movement-row"><span><strong>${escapeHtml(item.product_name || "کالا")}</strong><small>${escapeHtml(item.reference || item.movement_type || "")}</small></span><b class="${Number(item.quantity) < 0 ? "negative" : "positive"}">${Number(item.quantity) > 0 ? "+" : ""}${item.quantity}</b><span>${escapeHtml(item.created_at || "")}</span></div>`).join("") || `<div class="shop-empty">گردش انباری ثبت نشده است.</div>`;
+    html = `${shopSectionTitle("کنترل موجودی و تأمین", "انبارگردانی", "ورود کالا، اصلاح موجودی و گردش انبار را با ردپای کامل ثبت کنید.", `<button class="shop-refresh" id="shopRefresh">↻ بروزرسانی</button>`)}<div class="shop-card shop-form-card"><div class="shop-section-title"><div><h2>ثبت گردش انبار</h2><p>خرید، اصلاح موجودی یا مرجوعی خرید</p></div><span class="shop-badge">انبار</span></div><form id="shopStockForm" class="shop-form-grid shop-stock-form"><label>کالا<select name="product_id" required>${productOptions}</select></label><label>نوع گردش<select name="movement_type"><option value="purchase">خرید</option><option value="adjustment">اصلاح موجودی</option><option value="return">مرجوعی خرید</option></select></label><label>تعداد<input name="quantity" type="number" min="0.001" step="0.001" placeholder="تعداد" required /></label><label>قیمت واحد<input name="unit_cost" type="number" min="0" placeholder="قیمت خرید" /></label><label>رسید یا مرجع<input name="reference" placeholder="شماره رسید یا فاکتور" /></label><div class="shop-form-submit"><button class="button primary" type="submit">＋ ثبت گردش</button></div></form></div><div class="shop-card"><div class="shop-section-title"><div><h2>آخرین گردش‌های انبار</h2><p>۱۵ گردش اخیر برای کنترل و حسابرسی</p></div></div><div class="shop-movement-list">${movementRows}</div></div>`;
+  } else if (module === "shop-sales") {
+    html = `${shopSectionTitle("صندوق و فروش", "فروش جدید", "با جستجوی سریع کالا، فاکتور استاندارد صادر و فروش را ثبت کنید.", `<span class="shop-pos-status"><i></i> صندوق آنلاین</span>`)}<div class="shop-sales-layout"><div class="shop-card shop-sale-card"><div class="shop-section-title"><div><h2>افزودن به سبد خرید</h2><p>کالا و تعداد را انتخاب کنید.</p></div><span class="shop-badge">POS</span></div><form id="shopCartForm" class="shop-form-grid"><label>کالا<select name="product_id" required>${productOptions}</select></label><label>تعداد<input name="quantity" type="number" min="0.001" step="0.001" value="1" required /></label><div class="shop-form-submit"><button class="button ghost" type="submit">＋ افزودن به سبد</button></div></form><div class="shop-cart">${cartRows}</div><div class="shop-cart-total"><span>جمع سبد</span><strong>${shopMoney(shopCartTotal())}</strong></div><form id="shopSaleForm" class="shop-form-grid shop-checkout-form shop-sale-form"><label>نام مشتری<input name="customer_name" placeholder="اختیاری" /></label><label>تلفن مشتری<input name="customer_phone" placeholder="۰۹..." /></label><label>روش پرداخت<select name="payment_method"><option value="cash">نقدی</option><option value="card">کارت‌خوان</option><option value="transfer">انتقال بانکی</option></select></label><label>تخفیف<input name="discount" type="number" min="0" value="0" /></label><label>مالیات درصدی<input name="tax_percent" type="number" min="0" value="0" /></label><div class="shop-form-submit"><button class="button primary" type="submit">ثبت و صدور فاکتور</button></div></form></div><div class="shop-card"><div class="shop-section-title"><div><h2>فاکتورهای اخیر</h2><p>پیگیری فروش و مرجوعی</p></div></div><div class="shop-sales-list">${salesRows}</div></div></div>`;
+  } else {
+    html = `${shopSectionTitle("تحلیل عملکرد", "گزارش‌های فروشگاه", "درآمد، سود، فروش و هشدارهای موجودی را شفاف و قابل پیگیری ببینید.", `<button class="shop-refresh" id="shopRefresh">↻ بروزرسانی</button>`)}${kpis}<div class="shop-card"><div class="shop-section-title"><div><h2>خلاصه عملکرد</h2><p>شاخص‌های کلیدی فروشگاه بر اساس اطلاعات ثبت‌شده</p></div></div><div class="shop-report-grid"><div><span>تعداد کالاهای فعال</span><strong>${products.length}</strong></div><div><span>تعداد گردش انبار</span><strong>${(data.movements || []).length}</strong></div><div><span>آخرین فروش</span><strong>${data.sales?.[0] ? shopMoney(data.sales[0].total) : "—"}</strong></div><div><span>وضعیت انبار</span><strong>${report.low_stock_count ? "نیازمند تأمین" : "مطلوب"}</strong></div></div></div>`;
+  }
+  body.innerHTML = html;
+  bindPetShopEvents(section, data);
+  $$(".shop-nav-item", section).forEach(button => button.addEventListener("click", () => {
+    shopActiveModule = button.dataset.shopModule;
+    renderShopModule(shopActiveModule, data);
+  }));
+  $("#shopExitClinic", section)?.addEventListener("click", () => {
+    document.body.classList.remove("shop-mode");
+    shopActiveModule = "shop-dashboard";
+    navigate("dashboard");
+  });
+  $$(".shop-nav-item", section).forEach(button => button.classList.toggle("active", button.dataset.shopModule === module));
+  $$("[data-shop-target]", section).forEach(button => button.addEventListener("click", () => { shopActiveModule = button.dataset.shopTarget; renderShopModule(shopActiveModule, data); }));
+}
+
 async function renderPetShopWorkspace() {
   const section = $('.page-section[data-view="pet-shop"]');
   if (!section || !isShopSession()) return;
-  section.innerHTML = `<div class="workspace-page shop-page"><div class="page-heading"><div><div class="eyebrow">فروش و انبار پت‌شاپ</div><h1>پت‌شاپ</h1><p>کالا، بارکد، قیمت خرید و فروش، موجودی، فاکتور و گزارش سود را یکجا مدیریت کنید.</p></div><button class="button ghost" id="shopRefresh">↻ بروزرسانی</button></div><div id="shopBody"><div class="empty-copy">در حال بارگذاری اطلاعات فروشگاه...</div></div></div>`;
+  section.innerHTML = `<div class="shop-page-shell">${renderShopSidebar()}<div class="shop-main"><div id="shopModuleBody"><div class="shop-empty">در حال بارگذاری اطلاعات فروشگاه...</div></div></div></div>`;
   try {
     const data = await loadPetShopData();
     remoteModuleData.shopProducts = data.products;
     remoteModuleData.shopSales = data.sales;
     remoteModuleData.shopReport = data.report;
-    const products = data.products;
-    const report = data.report || {};
-    const productOptions = products.map(item => `<option value="${item.id}">${escapeHtml(item.name)} · ${escapeHtml(item.barcode)} · موجودی ${item.stock}</option>`).join("");
-    const rows = products.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.brand || item.category || "")}</small></td><td>${escapeHtml(item.barcode)}</td><td>${shopMoney(item.purchase_price)}</td><td>${shopMoney(item.sale_price)}</td><td>${item.stock} ${escapeHtml(item.unit)}</td><td><span class="status ${Number(item.stock) <= Number(item.reorder_level) ? "warning" : "success"}">${Number(item.stock) <= Number(item.reorder_level) ? "نیازمند تأمین" : "موجود"}</span></td><td><button class="text-button shop-edit-product" data-product-id="${item.id}">ویرایش</button></td></tr>`).join("");
-    const cartRows = shopCart.map((item, index) => `<div class="shop-cart-row"><span>${escapeHtml(item.name)}<small>${item.quantity} × ${shopMoney(item.unit_price)}</small></span><strong>${shopMoney(item.quantity * item.unit_price)}</strong><button type="button" class="row-more shop-remove-cart" data-cart-index="${index}">×</button></div>`).join("") || `<div class="empty-copy">سبد خرید خالی است.</div>`;
-    const salesRows = (data.sales || []).slice(0, 8).map(sale => `<div class="shop-sale-row"><span><strong>${escapeHtml(sale.invoice_number)}</strong><small>${escapeHtml(sale.customer_name || "مشتری آزاد")} · ${sale.created_at || ""}</small></span><b>${shopMoney(sale.total)}</b><span class="status ${sale.status === "completed" ? "success" : "warning"}">${sale.status === "completed" ? "تکمیل‌شده" : sale.status === "returned" ? "مرجوع‌شده" : sale.status}</span>${sale.status === "completed" ? `<button class="text-button shop-return-sale" data-sale-id="${sale.id}">مرجوعی</button>` : ""}</div>`).join("") || `<div class="empty-copy">فروشی ثبت نشده است.</div>`;
-    $("#shopBody", section).innerHTML = `<div class="workspace-grid four shop-kpis"><div class="workspace-card accent-card"><small>تعداد فروش</small><strong>${report.sales_count || 0}</strong><em>فاکتور</em></div><div class="workspace-card accent-card"><small>درآمد</small><strong>${shopMoney(report.revenue)}</strong><em>فروش تکمیل‌شده</em></div><div class="workspace-card accent-card"><small>سود</small><strong>${shopMoney(report.profit)}</strong><em>سود ناخالص</em></div><div class="workspace-card accent-card"><small>کالای کم‌موجودی</small><strong>${report.low_stock_count || 0}</strong><em>نیازمند سفارش</em></div>
-      <div class="workspace-card shop-form-card"><div class="workspace-toolbar"><div><h2>ثبت کالا</h2><p>اطلاعات کامل کالا و بارکد</p></div></div><form id="shopProductForm" class="request-form-grid"><input name="name" placeholder="نام کالا" required /><input name="barcode" placeholder="بارکد" required /><input name="sku" placeholder="SKU" /><input name="category" placeholder="دسته‌بندی" /><input name="brand" placeholder="برند" /><input name="purchase_price" type="number" min="0" placeholder="قیمت خرید" required /><input name="sale_price" type="number" min="0" placeholder="قیمت فروش" required /><input name="unit" placeholder="واحد" value="عدد" /><input name="reorder_level" type="number" min="0" placeholder="حد سفارش" value="0" /><button class="button primary" type="submit">ثبت کالا</button></form></div>
-      <div class="workspace-card shop-form-card"><div class="workspace-toolbar"><div><h2>ورود به انبار</h2><p>خرید یا اصلاح موجودی</p></div></div><form id="shopStockForm" class="request-form-grid"><select name="product_id" required>${productOptions}</select><select name="movement_type"><option value="purchase">خرید</option><option value="adjustment">اصلاح موجودی</option><option value="return">مرجوعی خرید</option></select><input name="quantity" type="number" min="0.001" step="0.001" placeholder="تعداد" required /><input name="unit_cost" type="number" min="0" placeholder="قیمت واحد" /><input name="reference" placeholder="شماره رسید/فاکتور" /><button class="button primary" type="submit">ثبت گردش</button></form></div>
-      <div class="workspace-card shop-sale-card"><div class="workspace-toolbar"><div><h2>فروش جدید</h2><p>بارکد یا کالا را انتخاب و به سبد اضافه کنید.</p></div></div><form id="shopCartForm" class="request-form-grid"><select name="product_id" required>${productOptions}</select><input name="quantity" type="number" min="0.001" step="0.001" value="1" required /><button class="button ghost" type="submit">افزودن به سبد</button></form><div class="shop-cart">${cartRows}</div><form id="shopSaleForm" class="request-form-grid"><input name="customer_name" placeholder="نام مشتری (اختیاری)" /><input name="customer_phone" placeholder="تلفن مشتری" /><select name="payment_method"><option value="cash">نقدی</option><option value="card">کارت</option><option value="transfer">انتقال بانکی</option></select><input name="discount" type="number" min="0" value="0" placeholder="تخفیف" /><input name="tax_percent" type="number" min="0" value="0" placeholder="مالیات %" /><button class="button primary" type="submit">ثبت فاکتور · ${shopMoney(shopCartTotal())}</button></form></div>
-      <div class="workspace-card shop-products-card"><div class="workspace-toolbar"><div><h2>کاتالوگ کالاها</h2><p>جستجوی سریع با نام، SKU یا بارکد</p></div><input id="shopProductSearch" placeholder="جستجو..." /></div><div class="table-scroll"><table class="shop-table"><thead><tr><th>کالا</th><th>بارکد</th><th>خرید</th><th>فروش</th><th>موجودی</th><th>وضعیت</th><th></th></tr></thead><tbody id="shopProductRows">${rows || `<tr><td colspan="7">کالایی ثبت نشده است.</td></tr>`}</tbody></table></div></div>
-      <div class="workspace-card shop-sales-card"><div class="workspace-toolbar"><div><h2>آخرین فاکتورها</h2><p>پیگیری فروش و مرجوعی</p></div></div>${salesRows}</div></div>`;
-    bindPetShopEvents(section, data);
+    renderShopModule(shopActiveModule, data);
   } catch (error) {
-    $("#shopBody", section).innerHTML = `<div class="health-alert"><strong>خطا در دریافت اطلاعات فروشگاه</strong><p>${escapeHtml(error.message)}</p></div>`;
+    $("#shopModuleBody", section).innerHTML = `<div class="health-alert"><strong>خطا در دریافت اطلاعات فروشگاه</strong><p>${escapeHtml(error.message)}</p></div>`;
   }
 }
 
@@ -1165,10 +1223,11 @@ function initializeLogin() {
     }
     localStorage.setItem("petclinic-session", JSON.stringify(session));
     applyAccessControl();
-    navigate("dashboard");
+    navigate(role === "shop_seller" ? "pet-shop" : "dashboard");
     toast(`ورود موفق به ${roleLabels[role]}`);
   });
   applyAccessControl();
+  if (isShopSellerSession()) navigate("pet-shop");
 }
 
 const sectionNames = {
@@ -1182,6 +1241,7 @@ sectionNames["pet-shop"] = "پت‌شاپ";
 function navigate(section) {
   if (isCustomerSession() && !customerSections.has(section)) section = "dashboard";
   if (isShopSellerSession() && !["dashboard", "pet-shop"].includes(section)) section = "pet-shop";
+  document.body.classList.toggle("shop-mode", section === "pet-shop" && isShopSession());
   state.activeSection = section;
   $$(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.section === section));
   $$(".page-section").forEach(view => view.classList.toggle("active", view.dataset.view === section));
