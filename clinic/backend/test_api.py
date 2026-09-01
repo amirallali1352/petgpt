@@ -311,6 +311,47 @@ class PetClinicApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 409, sale)
 
+    def test_pet_shop_keeps_same_name_variants_visible(self) -> None:
+        token = self.login("shopkeeper@petclinic.local")
+        variants = [
+            {
+                "sku": "HAMI-1KG",
+                "barcode": "HAMI-1001",
+                "name": "همیشگی",
+                "description": "یک کیلویی",
+                "purchase_price": 250000,
+                "sale_price": 300000,
+                "unit": "بسته",
+            },
+            {
+                "sku": "HAMI-2KG",
+                "barcode": "HAMI-2001",
+                "name": "همیشگی",
+                "description": "دو کیلویی",
+                "purchase_price": 500000,
+                "sale_price": 600000,
+                "unit": "بسته",
+            },
+        ]
+        for payload in variants:
+            status, body, _ = self.client.request(
+                "POST", "/api/shop/products", token=token, payload=payload
+            )
+            self.assertEqual(status, 201, body)
+
+        status, body, _ = self.client.request(
+            "GET", "/api/shop/products?active=true", token=token
+        )
+        self.assertEqual(status, 200, body)
+        visible = [
+            item for item in body["items"]
+            if item["sku"] in {"HAMI-1KG", "HAMI-2KG"}
+        ]
+        self.assertEqual(len(visible), 2)
+        self.assertEqual(
+            {item["description"] for item in visible}, {"یک کیلویی", "دو کیلویی"}
+        )
+
     def test_pet_shop_seller_is_limited_to_shop_data(self) -> None:
         token = self.login("shopkeeper@petclinic.local")
         for path in ("/api/customers", "/api/pets", "/api/records", "/api/labs"):

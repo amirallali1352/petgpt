@@ -996,7 +996,10 @@ function shopSectionTitle(eyebrow, title, description, action = "") {
 }
 
 function shopProductRows(products) {
-  return products.map(item => `<tr><td><div class="shop-product-name"><span>${escapeHtml((item.name || "ک").slice(0, 1))}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.brand || item.category || "بدون دسته‌بندی")}</small></div></td><td><code>${escapeHtml(item.barcode)}</code></td><td>${shopMoney(item.purchase_price)}</td><td>${shopMoney(item.sale_price)}</td><td><strong>${item.stock}</strong> ${escapeHtml(item.unit)}</td><td><span class="status ${Number(item.stock) <= Number(item.reorder_level) ? "warning" : "success"}">${Number(item.stock) <= Number(item.reorder_level) ? "نیازمند تأمین" : "موجود"}</span></td><td><button class="text-button shop-edit-product" data-product-id="${item.id}">ویرایش</button></td></tr>`).join("");
+  return products.map(item => {
+    const variant = item.description || item.sku || item.barcode || "بدون مشخصات";
+    return `<tr data-product-id="${item.id}" data-sku="${escapeHtml(item.sku || "")}" data-barcode="${escapeHtml(item.barcode || "")}"><td><div class="shop-product-name"><span>${escapeHtml((item.name || "ک").slice(0, 1))}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.brand || item.category || "بدون دسته‌بندی")} · ${escapeHtml(variant)}</small></div></td><td><code>${escapeHtml(item.barcode)}</code></td><td>${shopMoney(item.purchase_price)}</td><td>${shopMoney(item.sale_price)}</td><td><strong>${item.stock}</strong> ${escapeHtml(item.unit)}</td><td><span class="status ${Number(item.stock) <= Number(item.reorder_level) ? "warning" : "success"}">${Number(item.stock) <= Number(item.reorder_level) ? "نیازمند تأمین" : "موجود"}</span></td><td><button class="text-button shop-edit-product" data-product-id="${item.id}">ویرایش</button></td></tr>`;
+  }).join("");
 }
 
 function renderShopModule(module, data) {

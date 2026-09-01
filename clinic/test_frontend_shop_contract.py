@@ -84,6 +84,11 @@ class PetShopFrontendContractTests(unittest.TestCase):
         ):
             self.assertIn(marker, APP)
 
+    def test_product_catalog_does_not_collapse_variants_with_same_name(self) -> None:
+        self.assertIn("shopProductRows(products)", APP)
+        self.assertIn("item.sku || item.barcode", APP)
+        self.assertIn("item.description", APP)
+
     def test_invoice_register_has_readable_invoice_cards(self) -> None:
         for marker in (
             ".shop-invoice-list",
